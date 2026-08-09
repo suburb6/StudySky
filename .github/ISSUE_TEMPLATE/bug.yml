@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible StudySky defect
+title: '[Bug]: '
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Do not include credentials, private notes, production addresses, or student data. Security
+        issues must use private vulnerability reporting.
+  - type: input
+    id: version
+    attributes:
+      label: StudySky version
+      description: Use an immutable tag or commit SHA.
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation type
+      options:
+        - Released Docker image
+        - Source-built Docker image
+        - Local Node development
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include expected and actual behaviour.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Use synthetic data only.
+      placeholder: '1. Create an empty module…'
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, browser, Docker, and Compose versions.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, personal data, hostnames, IP addresses, and private files.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

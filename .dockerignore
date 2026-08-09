@@ -1,0 +1,16 @@
+.git
+.github
+.svelte-kit
+backups
+build
+build-worker
+coverage
+data
+node_modules
+playwright-report
+test-results
+uploads
+.env
+.env.*
+!.env.example
+*.log

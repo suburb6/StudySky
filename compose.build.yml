@@ -1,0 +1,21 @@
+services:
+  migrate:
+    image: studysky:local
+    build:
+      context: .
+      target: final
+  seed:
+    image: studysky:local
+    build:
+      context: .
+      target: final
+  web:
+    image: studysky:local
+    build:
+      context: .
+      target: final
+  worker:
+    image: studysky:local
+    build:
+      context: .
+      target: final

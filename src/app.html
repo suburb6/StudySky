@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f7f5" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+    <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+    <script>
+      try {
+        const saved = localStorage.getItem('studysky-theme');
+        const accent = localStorage.getItem('studysky-accent');
+        const theme =
+          saved === 'dark' || (!saved && matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'dark'
+            : 'light';
+        document.documentElement.dataset.theme = theme;
+        if (['blue', 'graphite', 'violet', 'forest', 'amber'].includes(accent ?? '')) {
+          document.documentElement.dataset.accent = accent;
+        }
+      } catch {}
+    </script>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

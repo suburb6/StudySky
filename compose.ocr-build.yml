@@ -1,0 +1,8 @@
+services:
+  worker:
+    image: studysky-ocr:local
+    build:
+      context: .
+      target: ocr-runtime
+    environment:
+      OCR_ENABLED: 'true'

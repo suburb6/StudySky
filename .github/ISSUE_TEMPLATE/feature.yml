@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest a focused improvement for self-hosted students
+title: '[Feature]: '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: student_problem
+    attributes:
+      label: Student problem
+      description: Describe the stressful or repetitive workflow, not only a proposed control.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current workaround
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Smallest useful change
+      description: Explain what should be added, removed, or combined.
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Privacy and self-hosting impact
+      description: Note new services, models, data, storage, or permissions.
+    validations:
+      required: true

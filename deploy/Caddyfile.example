@@ -1,0 +1,13 @@
+study.example.com {
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:3000
+
+  header {
+    -Server
+  }
+
+  log {
+    output file /var/log/caddy/studysky-access.log
+    format json
+  }
+}

@@ -1,0 +1,33 @@
+# Dependencies and build output
+node_modules/
+.svelte-kit/
+build/
+build-worker/
+coverage/
+test-results/
+playwright-report/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Private user data
+/data/
+/uploads/
+/backups/
+*.sqlite
+*.sqlite3
+*.db
+
+# Generated documents and models
+/models/
+/ocr-cache/
+/static/ocr-runtime/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log

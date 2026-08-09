@@ -1,0 +1,123 @@
+name: studysky
+
+services:
+  postgres:
+    image: postgres:18.4-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: studysky
+      POSTGRES_USER: studysky
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U studysky -d studysky']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+  migrate:
+    image: ghcr.io/suburb6/studysky:${STUDYSKY_VERSION:-v0.1.0}
+    restart: 'no'
+    command: ['node', 'build-worker/migrate.js']
+    environment:
+      DATABASE_URL: postgresql://studysky:${POSTGRES_PASSWORD}@postgres:5432/studysky
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  seed:
+    image: ghcr.io/suburb6/studysky:${STUDYSKY_VERSION:-v0.1.0}
+    profiles: ['setup']
+    restart: 'no'
+    command: ['node', 'build-worker/seed.js']
+    environment:
+      DATABASE_URL: postgresql://studysky:${POSTGRES_PASSWORD}@postgres:5432/studysky
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-StudySky owner}
+      ADMIN_TIMEZONE: ${ADMIN_TIMEZONE:-UTC}
+      DEFAULT_STORAGE_QUOTA_BYTES: ${DEFAULT_STORAGE_QUOTA_BYTES:-10737418240}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    image: ghcr.io/suburb6/studysky:${STUDYSKY_VERSION:-v0.1.0}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://studysky:${POSTGRES_PASSWORD}@postgres:5432/studysky
+      ORIGIN: ${ORIGIN:?Set ORIGIN}
+      STORAGE_ROOT: /data/uploads
+      DEFAULT_STORAGE_QUOTA_BYTES: ${DEFAULT_STORAGE_QUOTA_BYTES:-10737418240}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-104857600}
+      MAX_ACTIVE_UPLOAD_SESSIONS: ${MAX_ACTIVE_UPLOAD_SESSIONS:-10}
+      BODY_SIZE_LIMIT: ${BODY_SIZE_LIMIT:-110M}
+      SESSION_DAYS: ${SESSION_DAYS:-30}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
+      OCR_MODEL_CACHE_ROOT: ${OCR_MODEL_CACHE_ROOT:-/data/uploads/.browser-ocr-models}
+      OCR_MODEL_DOWNLOADS_ENABLED: ${OCR_MODEL_DOWNLOADS_ENABLED:-true}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      PUSH_ENDPOINT_ALLOWLIST: ${PUSH_ENDPOINT_ALLOWLIST:-}
+      OCR_ENABLED: 'false'
+      ADDRESS_HEADER: x-forwarded-for
+      XFF_DEPTH: 1
+      PROTOCOL_HEADER: x-forwarded-proto
+      HOST_HEADER: x-forwarded-host
+    volumes:
+      - uploads_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - '127.0.0.1:${STUDYSKY_PORT:-3000}:3000'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+
+  worker:
+    image: ghcr.io/suburb6/studysky:${STUDYSKY_VERSION:-v0.1.0}
+    restart: unless-stopped
+    command: ['node', 'build-worker/worker.js']
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_URL: postgresql://studysky:${POSTGRES_PASSWORD}@postgres:5432/studysky
+      STORAGE_ROOT: /data/uploads
+      OCR_ENABLED: ${OCR_ENABLED:-false}
+      OCRMY_PDF_PATH: ${OCRMY_PDF_PATH:-ocrmypdf}
+      OCR_LANGUAGES: ${OCR_LANGUAGES:-eng}
+      OCR_TIMEOUT_MS: ${OCR_TIMEOUT_MS:-300000}
+      MAX_PDF_PROCESSING_PAGES: ${MAX_PDF_PROCESSING_PAGES:-500}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      PUSH_ENDPOINT_ALLOWLIST: ${PUSH_ENDPOINT_ALLOWLIST:-}
+    volumes:
+      - uploads_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+
+volumes:
+  postgres_data:
+  uploads_data:
