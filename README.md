@@ -57,6 +57,18 @@ docker compose -f compose.yml -f compose.build.yml up -d --build postgres migrat
 docker compose -f compose.yml -f compose.build.yml --profile setup run --rm seed
 ```
 
+## Preview
+
+These images were captured from a disposable sample workspace. StudySky never installs the sample
+content; every new workspace starts empty.
+
+![StudySky Today view with a timetable and revision queue](docs/assets/screenshots/today.png)
+
+<p align="center">
+  <img src="docs/assets/screenshots/timetable.png" width="49%" alt="StudySky weekly timetable with colour-coded study events" />
+  <img src="docs/assets/screenshots/chapter-board.png" width="49%" alt="StudySky chapter Kanban board with three study stages" />
+</p>
+
 ## Documentation
 
 - [Installation on Docker Desktop and Linux](docs/INSTALL.md)
