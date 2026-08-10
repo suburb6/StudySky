@@ -31,7 +31,7 @@ wheels = {
 if architecture not in wheels:
     raise SystemExit(f"Unsupported formula image architecture: {architecture}")
 url, expected = wheels[architecture]
-target = pathlib.Path("/tmp/paddlepaddle.whl")
+target = pathlib.Path("/tmp") / url.rsplit("/", 1)[-1]
 with urllib.request.urlopen(url, timeout=120) as response, target.open("wb") as output:
     while chunk := response.read(1024 * 1024):
         output.write(chunk)
