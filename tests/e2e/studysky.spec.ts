@@ -181,7 +181,7 @@ test('uploads a scanned image and never reports a false client success', async (
   await expect(page.getByLabel('Module')).toBeVisible();
   await expect(page.getByLabel('Chapter')).toBeVisible();
   await expect(page.getByLabel('Document type')).toBeVisible();
-  await expect(page.getByLabel('Read handwriting after upload')).toBeVisible();
+  await expect(page.getByLabel('Digitise text after upload')).toBeVisible();
   await expect(page.getByLabel('Section')).toHaveCount(0);
   await expect(page.getByLabel('Notebook title')).toHaveCount(0);
   await expect(page.getByLabel('Page range')).toHaveCount(0);

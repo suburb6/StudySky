@@ -89,7 +89,6 @@ COPY --from=formula-models --chown=studysky-formula:studysky-formula /models /mo
 COPY --chown=studysky-formula:studysky-formula formula-service/server.py /service/server.py
 RUN rm -rf \
       /opt/venv/lib/python3.11/site-packages/pip* \
-      /opt/venv/lib/python3.11/site-packages/setuptools* \
       /opt/venv/lib/python3.11/site-packages/wheel* \
     && rm -f /opt/venv/bin/pip /opt/venv/bin/pip3 /opt/venv/bin/wheel
 USER studysky-formula
