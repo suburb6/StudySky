@@ -13,7 +13,7 @@ no public StudySky registration service.
 - Monday–Sunday timetable, one-off events, iCalendar import/export, editing, and overlaps
 - Tasks, revision scheduling, weekly planning, focus sessions, and notifications
 - Private document uploads with tenant isolation, quotas, checksums, and backups
-- Browser-based PaddleOCR/ONNX recognition for printed and handwritten notes
+- Browser-based PaddleOCR/ONNX recognition with simple English or Latin-language reading modes
 - Optional OCRmyPDF/Tesseract worker for searchable PDFs
 - Administrator-created member accounts; no open registration
 - Per-account IANA timezones and generic weighted grading by default

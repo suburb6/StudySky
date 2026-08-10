@@ -2,6 +2,13 @@
 
 All notable changes are documented here. StudySky follows Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- Curated on-device OCR reading modes for English handwriting and Latin-language notes with common
+  symbols
+
 ## [0.1.0] - 2026-08-09
 
 ### Added

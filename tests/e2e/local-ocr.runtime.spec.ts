@@ -32,7 +32,7 @@ test('the isolated OCR worker starts under the strict page CSP', async ({ page }
   expect(message).toMatch(/inference\.onnx.*tar archive/i);
 });
 
-test('the pinned English model completes local OCR', async ({ page }) => {
+test('the pinned student reading modes complete local OCR', async ({ page }) => {
   test.skip(
     process.env.E2E_FULL_OCR !== 'true',
     'Set E2E_FULL_OCR=true for the network model test.'
@@ -46,7 +46,9 @@ test('the pinned English model completes local OCR', async ({ page }) => {
     'PP-OCRv5_mobile_det.tar':
       'https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_mobile_det_onnx_infer.tar',
     'en_PP-OCRv5_mobile_rec.tar':
-      'https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/en_PP-OCRv5_mobile_rec_onnx_infer.tar'
+      'https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/en_PP-OCRv5_mobile_rec_onnx_infer.tar',
+    'latin_PP-OCRv5_mobile_rec.tar':
+      'https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/latin_PP-OCRv5_mobile_rec_onnx_infer.tar'
   };
   await page.route(/\/api\/ocr-models\/([^/]+)$/, async (route) => {
     const name = route.request().url().split('/').pop() as keyof typeof upstream;
@@ -55,9 +57,9 @@ test('the pinned English model completes local OCR', async ({ page }) => {
   });
 
   await page.goto('/health');
-  const words = await page.evaluate(async (modulePath) => {
+  const results = await page.evaluate(async (modulePath) => {
     const module = (await import(modulePath)) as {
-      createLocalOcrRunner(): Promise<{
+      createLocalOcrRunner(profileId?: 'english' | 'latin'): Promise<{
         predict(input: Blob): Promise<Array<{ items: Array<{ text: string }> }>>;
         dispose(): Promise<void>;
       }>;
@@ -77,14 +79,21 @@ test('the pinned English model completes local OCR', async ({ page }) => {
         'image/png'
       )
     );
-    const runner = await module.createLocalOcrRunner();
-    try {
-      const result = await runner.predict(input);
-      return result.flatMap((pageResult) => pageResult.items.map((item) => item.text));
-    } finally {
-      await runner.dispose();
+    const output: Record<string, string[]> = {};
+    for (const profileId of ['english', 'latin'] as const) {
+      const runner = await module.createLocalOcrRunner(profileId);
+      try {
+        const result = await runner.predict(input);
+        output[profileId] = result.flatMap((pageResult) =>
+          pageResult.items.map((item) => item.text)
+        );
+      } finally {
+        await runner.dispose();
+      }
     }
+    return output;
   }, runnerPath);
 
-  expect(words.join(' ').trim().length).toBeGreaterThan(3);
+  expect(results.english.join(' ').trim().length).toBeGreaterThan(3);
+  expect(results.latin.join(' ').trim().length).toBeGreaterThan(3);
 });

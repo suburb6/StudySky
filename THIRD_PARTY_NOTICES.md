@@ -33,10 +33,11 @@ installed package and release SBOM.
 
 The browser OCR feature downloads these PaddleOCR artifacts on demand:
 
-| Artifact                                | Pinned SHA-256                                                     |
-| --------------------------------------- | ------------------------------------------------------------------ |
-| `PP-OCRv5_mobile_det_onnx_infer.tar`    | `781056046c9ed77a15c94681605db6a0f62317c2e9cce6931c71da2478d4bc30` |
-| `en_PP-OCRv5_mobile_rec_onnx_infer.tar` | `4424e851309b291b00aab8191cd4314cefbd2d1b2381ff8994019d262fa95e28` |
+| Artifact                                   | Pinned SHA-256                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| `PP-OCRv5_mobile_det_onnx_infer.tar`       | `781056046c9ed77a15c94681605db6a0f62317c2e9cce6931c71da2478d4bc30` |
+| `en_PP-OCRv5_mobile_rec_onnx_infer.tar`    | `4424e851309b291b00aab8191cd4314cefbd2d1b2381ff8994019d262fa95e28` |
+| `latin_PP-OCRv5_mobile_rec_onnx_infer.tar` | `0fd8634124d871d25492311da077517ba3b4277ea67a0dec9e46ce537978c7cb` |
 
 PaddleOCR code and published model assets are supplied by PaddlePaddle under Apache-2.0. ONNX
 Runtime Web is supplied by Microsoft under MIT. StudySky does not modify the downloaded model

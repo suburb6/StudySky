@@ -18,6 +18,11 @@ const models = {
     upstream: `${upstreamRoot}/en_PP-OCRv5_mobile_rec_onnx_infer.tar`,
     bytes: 7_874_560,
     sha256: '4424e851309b291b00aab8191cd4314cefbd2d1b2381ff8994019d262fa95e28'
+  },
+  'latin_PP-OCRv5_mobile_rec.tar': {
+    upstream: `${upstreamRoot}/latin_PP-OCRv5_mobile_rec_onnx_infer.tar`,
+    bytes: 8_069_120,
+    sha256: '0fd8634124d871d25492311da077517ba3b4277ea67a0dec9e46ce537978c7cb'
   }
 } as const;
 
