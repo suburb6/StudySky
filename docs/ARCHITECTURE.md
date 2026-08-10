@@ -2,7 +2,8 @@
 
 StudySky is a SvelteKit application with PostgreSQL, a background worker, and local file storage.
 The release uses four application roles from the same base image: migration, one-time seed, web,
-and worker. The optional OCR worker uses a separate heavier image variant.
+and worker. Searchable-PDF OCR and formula recognition use separate, optional heavier image
+variants.
 
 ## Runtime boundaries
 
@@ -13,6 +14,8 @@ and worker. The optional OCR worker uses a separate heavier image variant.
 - **Upload volume:** originals, derived assets, and the private browser-OCR model cache.
 - **Browser:** PWA shell, offline queue, scanner preprocessing, PDF viewing on demand, and local
   PaddleOCR/ONNX inference.
+- **Formula service (optional):** private, token-authenticated Paddle formula/layout inference with
+  no public port and serialised requests.
 
 The web and worker run as an unprivileged user with a read-only root filesystem. PostgreSQL and
 uploads use separate named volumes. Caddy or another trusted reverse proxy terminates HTTPS.
@@ -42,15 +45,17 @@ default to UTC. The default-changing migration does not update existing rows.
 
 Browser OCR downloads integrity-pinned Paddle model artifacts from an authenticated same-origin
 endpoint and performs inference in a worker on the client. Searchable-PDF OCR is optional and runs
-OCRmyPDF/Tesseract in the self-hosted background worker. Neither mode requires a third-party OCR
-API.
+OCRmyPDF/Tesseract in the self-hosted background worker. Formula-to-LaTeX is optional and sends a
+normalised page through an authenticated server route to PP-FormulaNet-S and PP-DocLayout-M on the
+private Compose network. The formula container keeps no application database or upload volume.
+None of these paths requires a third-party OCR API.
 
 ## Release supply chain
 
 GitHub Actions build `linux/amd64` and `linux/arm64` images from an immutable annotated tag. The
 release publishes source archives, SHA-256 checksums, SPDX SBOMs, registry provenance, GitHub
-attestations, and keyless Cosign signatures. Compose requires a versioned image tag. The
-source-build override remains available for independent reproducible builds.
+attestations, and keyless Cosign signatures for the base, OCR, and formula images. Compose requires
+a versioned image tag. The source-build overrides remain available for independent builds.
 
 ## Data recovery
 

@@ -44,6 +44,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Match package version to the release tag
+        run: node --eval "if ('v' + require('./package.json').version !== process.env.GITHUB_REF_NAME) process.exit(1)"
       - run: npm ci
       - run: npm run db:migrate
       - run: npm run db:seed
@@ -53,17 +55,23 @@ jobs:
     name: Image (${{ matrix.variant }})
     needs: gate
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: true
       matrix:
         include:
           - variant: base
+            dockerfile: Dockerfile
             target: final
             suffix: ''
           - variant: ocr
+            dockerfile: Dockerfile
             target: ocr-runtime
             suffix: '-ocr'
+          - variant: formula
+            dockerfile: Dockerfile.formula
+            target: formula-runtime
+            suffix: '-formula'
     permissions:
       actions: read
       contents: read
@@ -86,6 +94,7 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: true
@@ -158,6 +167,7 @@ jobs:
       SETTINGS_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       STUDYSKY_VERSION: ${{ github.ref_name }}
       IMAGE: ghcr.io/suburb6/studysky
+      FORMULA_OCR_TOKEN: formula-release-token-000000000000000000000000000000
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -171,7 +181,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for suffix in '' '-ocr'; do
+          for suffix in '' '-ocr' '-formula'; do
             reference="${IMAGE}:${GITHUB_REF_NAME}${suffix}"
             manifest="$(docker buildx imagetools inspect --raw "${reference}")"
             jq --exit-status '[.manifests[].platform | select(.os == "linux") | .architecture] | index("amd64") != null and index("arm64") != null' <<<"${manifest}"
@@ -183,9 +193,11 @@ jobs:
           done
       - name: Verify blank install from the published base image
         run: CONTAINER_SMOKE_RELEASE_IMAGE=true bash scripts/container-smoke.sh
+      - name: Verify formula recognition in the published image
+        run: bash scripts/formula-container-smoke.sh
       - name: Stop verification containers
         if: always()
-        run: docker compose -f compose.yml down --volumes --remove-orphans
+        run: docker compose -f compose.yml -f compose.formula.yml down --volumes --remove-orphans
 
   publish:
     name: Publish GitHub release

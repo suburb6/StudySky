@@ -1,0 +1,98 @@
+# syntax=docker/dockerfile:1.7
+FROM python:3.11.13-slim-bookworm AS formula-dependencies
+ARG TARGETARCH
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:$PATH
+WORKDIR /build
+RUN python -m venv /opt/venv
+COPY formula-service/requirements.lock ./requirements.lock
+RUN python - "$TARGETARCH" <<'PY'
+import hashlib
+import pathlib
+import subprocess
+import sys
+import urllib.request
+
+architecture = sys.argv[1]
+wheels = {
+    "amd64": (
+        "https://paddle-whl.bj.bcebos.com/stable/cpu/paddlepaddle/"
+        "paddlepaddle-3.3.1-cp311-cp311-linux_x86_64.whl",
+        "bb22396233d807f6957d9c4a6a1edc76693fb589c4ee3d17caf7e39113ca4047",
+    ),
+    "arm64": (
+        "https://paddle-whl.bj.bcebos.com/stable/cpu/paddlepaddle/"
+        "paddlepaddle-3.3.1-cp311-cp311-linux_aarch64.whl",
+        "66bf8aab382c84785988f46c6b1f653373684047d94bce09fc88f5b79350ba12",
+    ),
+}
+if architecture not in wheels:
+    raise SystemExit(f"Unsupported formula image architecture: {architecture}")
+url, expected = wheels[architecture]
+target = pathlib.Path("/tmp") / url.rsplit("/", 1)[-1]
+with urllib.request.urlopen(url, timeout=120) as response, target.open("wb") as output:
+    while chunk := response.read(1024 * 1024):
+        output.write(chunk)
+actual = hashlib.sha256(target.read_bytes()).hexdigest()
+if actual != expected:
+    raise SystemExit(f"PaddlePaddle wheel digest mismatch: {actual}")
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "--no-deps", str(target)],
+    check=True,
+)
+target.unlink()
+PY
+RUN python -m pip install --no-deps --only-binary=:all: --requirement requirements.lock
+
+FROM python:3.11.13-slim-bookworm AS formula-models
+WORKDIR /models
+ADD --checksum=sha256:a3ea2c005abdbe525d9e46c1e2e96021d900b0dd45535a112260d46dd437612e \
+    https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-FormulaNet-S_infer.tar \
+    /tmp/PP-FormulaNet-S_infer.tar
+ADD --checksum=sha256:f61a1839dac9dfd44fe427df84edd5635f4661e84fae9c2c34cdf9c65e5b7b5e \
+    https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-DocLayout-M_infer.tar \
+    /tmp/PP-DocLayout-M_infer.tar
+RUN tar --extract --file=/tmp/PP-FormulaNet-S_infer.tar --directory=/models \
+    && tar --extract --file=/tmp/PP-DocLayout-M_infer.tar --directory=/models \
+    && rm /tmp/PP-FormulaNet-S_infer.tar /tmp/PP-DocLayout-M_infer.tar
+
+FROM python:3.11.13-slim-bookworm AS formula-runtime
+ENV HOME=/tmp/studysky-formula \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PADDLE_PDX_MODEL_SOURCE=BOS \
+    VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:$PATH \
+    FORMULA_OCR_HOST=0.0.0.0 \
+    FORMULA_OCR_PORT=8080 \
+    FORMULA_OCR_MODEL_DIR=/models/PP-FormulaNet-S_infer \
+    FORMULA_OCR_LAYOUT_MODEL_DIR=/models/PP-DocLayout-M_infer
+WORKDIR /service
+RUN apt-get update \
+    && apt-get upgrade --yes \
+    && apt-get install --yes --no-install-recommends \
+      libgl1 \
+      libglib2.0-0 \
+      libgomp1 \
+    && groupadd --system --gid 10002 studysky-formula \
+    && useradd --system --uid 10002 --gid studysky-formula --home-dir /service studysky-formula \
+    && rm -rf \
+      /var/lib/apt/lists/* \
+      /usr/local/lib/python3.11/site-packages/pip* \
+      /usr/local/lib/python3.11/site-packages/setuptools* \
+      /usr/local/lib/python3.11/site-packages/wheel* \
+    && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/wheel
+COPY --from=formula-dependencies --chown=studysky-formula:studysky-formula /opt/venv /opt/venv
+COPY --from=formula-models --chown=studysky-formula:studysky-formula /models /models
+COPY --chown=studysky-formula:studysky-formula formula-service/server.py /service/server.py
+RUN rm -rf \
+      /opt/venv/lib/python3.11/site-packages/pip* \
+      /opt/venv/lib/python3.11/site-packages/wheel* \
+    && rm -f /opt/venv/bin/pip /opt/venv/bin/pip3 /opt/venv/bin/wheel
+USER studysky-formula
+EXPOSE 8080
+HEALTHCHECK --interval=20s --timeout=5s --start-period=120s --retries=6 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()"
+CMD ["python", "/service/server.py"]

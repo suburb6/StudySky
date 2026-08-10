@@ -911,9 +911,9 @@
       disabled={!ocrCompatible}
     />
     <span
-      ><strong>Read handwriting after upload</strong><small
-        >Optional. Opens the first PDF or image in the free local OCR reader; the original remains
-        unchanged.</small
+      ><strong>Digitise text after upload</strong><small
+        >Optional. Opens the first PDF or image in the on-device text reader; the original remains
+        unchanged. Formula to LaTeX is available from the same reader when enabled by the host.</small
       ></span
     >
   </label>

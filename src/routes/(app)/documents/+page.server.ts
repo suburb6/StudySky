@@ -296,41 +296,43 @@ export const actions: Actions = {
       .object({
         documentId: z.uuid(),
         extractedText: z.string().min(1).max(2_000_000),
-        confidence: z.coerce.number().min(0).max(1),
-        engine: z.string().min(1).max(120)
+        confidence: z.coerce.number().min(0).max(1).nullable(),
+        engine: z.string().min(1).max(160),
+        outputKind: z.enum(['text', 'formula_latex'])
       })
       .safeParse({
         documentId: formString(form, 'documentId'),
         extractedText: formString(form, 'extractedText'),
-        confidence: formString(form, 'confidence'),
-        engine: formString(form, 'engine')
+        confidence: optionalFormString(form, 'confidence'),
+        engine: formString(form, 'engine'),
+        outputKind: optionalFormString(form, 'outputKind') ?? 'text'
       });
-    if (!parsed.success) {
+    if (
+      !parsed.success ||
+      (parsed.data.outputKind === 'text' && parsed.data.confidence === null) ||
+      (parsed.data.outputKind === 'formula_latex' && parsed.data.confidence !== null)
+    ) {
       return fail(400, {
-        error: 'The local OCR draft is invalid or too large.',
+        error: 'The digitised draft is invalid or too large.',
         action: 'saveLocalOcr'
       });
     }
 
     const db = getDatabase();
+    const writableByUser = or(
+      eq(documents.userId, locals.user!.id),
+      sql`exists (
+        select 1 from ${documentShares}
+        where ${documentShares.documentId} = ${documents.id}
+          and ${documentShares.sharedWithUserId} = ${locals.user!.id}
+          and ${documentShares.permission} = 'collaborate'
+          and ${documentShares.revokedAt} is null
+      )`
+    );
     const [target] = await db
       .select({ ownerId: documents.userId })
       .from(documents)
-      .where(
-        and(
-          eq(documents.id, parsed.data.documentId),
-          or(
-            eq(documents.userId, locals.user!.id),
-            sql`exists (
-              select 1 from ${documentShares}
-              where ${documentShares.documentId} = ${documents.id}
-                and ${documentShares.sharedWithUserId} = ${locals.user!.id}
-                and ${documentShares.permission} = 'collaborate'
-                and ${documentShares.revokedAt} is null
-            )`
-          )
-        )
-      )
+      .where(and(eq(documents.id, parsed.data.documentId), writableByUser))
       .limit(1);
     if (!target) {
       return fail(403, {
@@ -339,28 +341,63 @@ export const actions: Actions = {
       });
     }
 
-    await db.transaction(async (tx) => {
-      await tx
+    const saved = await db.transaction(async (tx) => {
+      const [updated] = await tx
         .update(documents)
         .set({
-          extractedText: parsed.data.extractedText,
-          ocrConfidence: parsed.data.confidence,
+          extractedText:
+            parsed.data.outputKind === 'formula_latex'
+              ? sql<string>`case
+                  when nullif(trim(coalesce(${documents.extractedText}, '')), '') is null
+                    then ${parsed.data.extractedText}
+                  else ${documents.extractedText} || E'\n\n' || ${parsed.data.extractedText}
+                end`
+              : parsed.data.extractedText,
+          ocrConfidence:
+            parsed.data.outputKind === 'formula_latex' ? null : (parsed.data.confidence ?? 0),
           ocrStatus: 'needs_review',
           updatedAt: new Date()
         })
-        .where(eq(documents.id, parsed.data.documentId));
+        .where(
+          and(
+            eq(documents.id, parsed.data.documentId),
+            writableByUser,
+            parsed.data.outputKind === 'formula_latex'
+              ? sql`length(coalesce(${documents.extractedText}, ''))
+                    + length(${parsed.data.extractedText})
+                    + case
+                        when nullif(trim(coalesce(${documents.extractedText}, '')), '') is null
+                          then 0
+                        else 2
+                      end <= 2000000`
+              : undefined
+          )
+        )
+        .returning({ id: documents.id });
+      if (!updated) return false;
       await tx.insert(auditLogs).values({
         actorUserId: locals.user!.id,
         targetUserId: target.ownerId,
-        action: 'document.local_ocr_saved',
+        action:
+          parsed.data.outputKind === 'formula_latex'
+            ? 'document.formula_latex_saved'
+            : 'document.local_ocr_saved',
         entityType: 'document',
         entityId: parsed.data.documentId,
         detail: {
           engine: parsed.data.engine,
-          confidence: parsed.data.confidence
+          outputKind: parsed.data.outputKind,
+          ...(parsed.data.confidence === null ? {} : { confidence: parsed.data.confidence })
         }
       });
+      return true;
     });
+    if (!saved) {
+      return fail(409, {
+        error: 'The document changed or the combined digitised text would be too large.',
+        action: 'saveLocalOcr'
+      });
+    }
     return { success: true, action: 'saveLocalOcr' };
   },
   correctText: async ({ request, locals }) => {

@@ -33,14 +33,31 @@ installed package and release SBOM.
 
 The browser OCR feature downloads these PaddleOCR artifacts on demand:
 
-| Artifact                                | Pinned SHA-256                                                     |
-| --------------------------------------- | ------------------------------------------------------------------ |
-| `PP-OCRv5_mobile_det_onnx_infer.tar`    | `781056046c9ed77a15c94681605db6a0f62317c2e9cce6931c71da2478d4bc30` |
-| `en_PP-OCRv5_mobile_rec_onnx_infer.tar` | `4424e851309b291b00aab8191cd4314cefbd2d1b2381ff8994019d262fa95e28` |
+| Artifact                                   | Pinned SHA-256                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| `PP-OCRv5_mobile_det_onnx_infer.tar`       | `781056046c9ed77a15c94681605db6a0f62317c2e9cce6931c71da2478d4bc30` |
+| `en_PP-OCRv5_mobile_rec_onnx_infer.tar`    | `4424e851309b291b00aab8191cd4314cefbd2d1b2381ff8994019d262fa95e28` |
+| `latin_PP-OCRv5_mobile_rec_onnx_infer.tar` | `0fd8634124d871d25492311da077517ba3b4277ea67a0dec9e46ce537978c7cb` |
 
 PaddleOCR code and published model assets are supplied by PaddlePaddle under Apache-2.0. ONNX
 Runtime Web is supplied by Microsoft under MIT. StudySky does not modify the downloaded model
 artifacts; it verifies their expected length and digest before serving them to authenticated users.
+
+### Optional formula image
+
+The `-formula` image contains PaddlePaddle, PaddleOCR, PaddleX, and these official Paddle model
+archives:
+
+| Artifact                    | Pinned SHA-256                                                     |
+| --------------------------- | ------------------------------------------------------------------ |
+| `PP-FormulaNet-S_infer.tar` | `a3ea2c005abdbe525d9e46c1e2e96021d900b0dd45535a112260d46dd437612e` |
+| `PP-DocLayout-M_infer.tar`  | `f61a1839dac9dfd44fe427df84edd5635f4661e84fae9c2c34cdf9c65e5b7b5e` |
+
+PaddlePaddle, PaddleOCR, PaddleX, and the published Paddle model assets are Apache-2.0. The image
+also includes OpenCV (Apache-2.0), NumPy (BSD-3-Clause), Pillow (HPND), and other locked Python and
+Debian dependencies. Exact versions and complete transitive inventory are recorded in
+`formula-service/requirements.lock` and the release SBOM. Architecture-specific PaddlePaddle wheels
+and both model archives are digest-verified during the image build.
 
 ## Optional OCR image
 
