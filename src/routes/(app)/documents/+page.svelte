@@ -8,8 +8,8 @@
     FileText,
     Inbox,
     Pencil,
+    ScanText,
     Search,
-    Sparkles,
     Trash2,
     Upload
   } from '@lucide/svelte';
@@ -50,7 +50,7 @@
           : form.action === 'organise'
             ? 'Document details updated.'
             : form.action === 'saveLocalOcr'
-              ? 'Text saved.'
+              ? 'Digitised content saved.'
               : 'Saved.'
         : localToast
   );
@@ -240,7 +240,7 @@
               </a>
               {#if row.document.mimeType === 'application/pdf' || row.document.mimeType.startsWith('image/')}
                 <button type="button" onclick={() => openOcr(row.document)}>
-                  <Sparkles size={15} /> Read handwriting
+                  <ScanText size={15} /> Digitise
                 </button>
               {/if}
               <button type="button" onclick={() => openEdit(row)}>
@@ -391,8 +391,8 @@
 
   <Modal
     bind:open={ocrOpen}
-    title="Read handwriting"
-    description="Review the result before saving it with this document."
+    title="Digitise notes"
+    description="Turn handwriting or formulas into editable text, then review before saving."
     size="large"
   >
     {#if ocrDocument}
@@ -403,7 +403,7 @@
         existingText={ocrDocument.existingText}
         onsaved={() => {
           ocrOpen = false;
-          notify('Text saved.');
+          notify('Digitised content saved.');
         }}
       />
     {/if}

@@ -1,5 +1,5 @@
 services:
   worker:
-    image: ghcr.io/suburb6/studysky:${STUDYSKY_VERSION:-v0.1.0}-ocr
+    image: ghcr.io/suburb6/studysky:${STUDYSKY_VERSION:-v0.2.0}-ocr
     environment:
       OCR_ENABLED: 'true'

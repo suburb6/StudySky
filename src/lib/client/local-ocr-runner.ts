@@ -1,4 +1,10 @@
 import type { OcrResult } from '@paddleocr/paddleocr-js';
+import {
+  browserOcrDetectionModel,
+  defaultBrowserOcrProfileId,
+  getBrowserOcrProfile,
+  type BrowserOcrProfileId
+} from '$lib/domain/browser-ocr-profiles';
 
 type WorkerResponse =
   | {
@@ -25,7 +31,9 @@ export interface LocalOcrRunner {
   dispose(): Promise<void>;
 }
 
-export async function createLocalOcrRunner(): Promise<LocalOcrRunner> {
+export async function createLocalOcrRunner(
+  profileId: BrowserOcrProfileId = defaultBrowserOcrProfileId
+): Promise<LocalOcrRunner> {
   if (
     typeof Worker !== 'function' ||
     typeof OffscreenCanvas !== 'function' ||
@@ -35,7 +43,7 @@ export async function createLocalOcrRunner(): Promise<LocalOcrRunner> {
       'Local handwriting recognition needs a browser with Web Worker and OffscreenCanvas support.'
     );
   }
-  const runner = new WorkerOcrRunner();
+  const runner = new WorkerOcrRunner(profileId);
   try {
     await runner.initialize();
     return runner;
@@ -54,7 +62,7 @@ class WorkerOcrRunner implements LocalOcrRunner {
   private nextRequestId = 1;
   private disposed = false;
 
-  constructor() {
+  constructor(private readonly profileId: BrowserOcrProfileId) {
     this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const message = event.data;
       if (message?.kind !== 'worker-transport-response') return;
@@ -77,6 +85,7 @@ class WorkerOcrRunner implements LocalOcrRunner {
   }
 
   async initialize() {
+    const profile = getBrowserOcrProfile(this.profileId);
     await this.request(
       'init',
       {
@@ -87,12 +96,12 @@ class WorkerOcrRunner implements LocalOcrRunner {
             warnings: [],
             unsupportedFeatures: [],
             modelSelection: {
-              textDetectionModelName: 'PP-OCRv5_mobile_det',
-              textRecognitionModelName: 'en_PP-OCRv5_mobile_rec'
+              textDetectionModelName: browserOcrDetectionModel.name,
+              textRecognitionModelName: profile.recognitionModelName
             },
             assets: {
-              det: { url: '/api/ocr-models/PP-OCRv5_mobile_det.tar' },
-              rec: { url: '/api/ocr-models/en_PP-OCRv5_mobile_rec.tar' }
+              det: { url: `/api/ocr-models/${browserOcrDetectionModel.assetName}` },
+              rec: { url: `/api/ocr-models/${profile.recognitionAssetName}` }
             },
             runtimeDefaults: {
               text_det_limit_side_len: 960,

@@ -13,7 +13,8 @@ no public StudySky registration service.
 - Monday–Sunday timetable, one-off events, iCalendar import/export, editing, and overlaps
 - Tasks, revision scheduling, weekly planning, focus sessions, and notifications
 - Private document uploads with tenant isolation, quotas, checksums, and backups
-- Browser-based PaddleOCR/ONNX recognition for printed and handwritten notes
+- Browser-based PaddleOCR/ONNX recognition with simple English or Latin-language reading modes
+- Optional self-hosted formula-to-LaTeX for printed and handwritten mathematics
 - Optional OCRmyPDF/Tesseract worker for searchable PDFs
 - Administrator-created member accounts; no open registration
 - Per-account IANA timezones and generic weighted grading by default
@@ -87,7 +88,8 @@ content; every new workspace starts empty.
 StudySky stores application data in PostgreSQL and originals in a Docker volume. It has no
 analytics or telemetry. Browser OCR runs recognition on the signed-in device after the server has
 cached integrity-pinned model files; the note image is not sent to a third-party OCR API. Optional
-AI providers are disabled until an administrator configures one.
+formula recognition sends only the selected page to a private container inside the operator's own
+installation. Optional AI providers are disabled until an administrator configures one.
 
 Self-hosting still requires operational care: use HTTPS, keep releases current, restrict server
 access, test backups, and protect the host. See [SECURITY.md](SECURITY.md) for private reporting.
@@ -96,6 +98,8 @@ access, test backups, and protect the host. See [SECURITY.md](SECURITY.md) for p
 
 - OCR quality varies with handwriting, lighting, page angle, language, and device performance.
 - Browser OCR is assistive: always review extracted text before relying on it.
+- Formula-to-LaTeX is an optional, heavier service. Its output is an editable draft, not a
+  mathematical correctness check or an explanation.
 - OCRmyPDF/Tesseract primarily targets printed text and is an optional, heavier image.
 - Calendar import supports timed weekly and one-off events; complex recurrence exceptions are not
   fully modelled.

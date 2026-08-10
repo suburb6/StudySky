@@ -15,7 +15,7 @@ deployment account. Follow [INSTALL.md](INSTALL.md), but set:
 
 ```dotenv
 ORIGIN=https://study.example.com
-STUDYSKY_VERSION=v0.1.0
+STUDYSKY_VERSION=v0.2.0
 ```
 
 The Compose file binds StudySky to `127.0.0.1`, so it is not directly exposed to the internet.

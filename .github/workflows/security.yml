@@ -51,23 +51,45 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
-          languages: javascript-typescript
+          languages: javascript-typescript,python
           build-mode: none
       - name: Analyze
         uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
 
-  trivy:
-    name: Trivy
+  trivy-images:
+    name: Trivy (${{ matrix.variant }})
     runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: base
+            dockerfile: Dockerfile
+            target: final
+          - variant: formula
+            dockerfile: Dockerfile.formula
+            target: formula-runtime
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build image
-        run: docker build --target final --tag studysky:security .
+        run: docker build --file "${{ matrix.dockerfile }}" --target "${{ matrix.target }}" --tag "studysky:security-${{ matrix.variant }}" .
       - name: Scan image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: studysky:security
+          image-ref: studysky:security-${{ matrix.variant }}
           format: table
           exit-code: '1'
           ignore-unfixed: true
           severity: HIGH,CRITICAL
+
+  trivy:
+    name: Trivy
+    if: always()
+    needs: trivy-images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every image scan to pass
+        env:
+          SCAN_RESULT: ${{ needs.trivy-images.result }}
+        run: test "${SCAN_RESULT}" = "success"

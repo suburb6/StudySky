@@ -1,8 +1,25 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { onDestroy, onMount } from 'svelte';
-  import { LoaderCircle, Save } from '@lucide/svelte';
+  import {
+    HardDriveDownload,
+    LoaderCircle,
+    Save,
+    ScanText,
+    ShieldCheck,
+    Sigma
+  } from '@lucide/svelte';
   import type { OcrResult } from '@paddleocr/paddleocr-js';
+  import FormulaLatexOcr from '$lib/components/FormulaLatexOcr.svelte';
+  import {
+    browserOcrProfiles,
+    defaultBrowserOcrProfileId,
+    getBrowserOcrProfile,
+    isBrowserOcrProfileId,
+    type BrowserOcrProfileId
+  } from '$lib/domain/browser-ocr-profiles';
+
+  const OCR_PROFILE_STORAGE_KEY = 'studysky:browser-ocr-profile';
 
   type OcrRunner = {
     predict(input: unknown): Promise<OcrResult[]>;
@@ -32,12 +49,27 @@
   let confidence = $state(0);
   let currentPage = $state(0);
   let pageCount = $state(0);
+  let digitiseMode = $state<'text' | 'formula'>('text');
+  let selectedProfileId = $state<BrowserOcrProfileId>(defaultBrowserOcrProfileId);
+  let activeProfileId = $state<BrowserOcrProfileId>(defaultBrowserOcrProfileId);
   let runner: OcrRunner | null = null;
   let pdfTask: import('pdfjs-dist').PDFDocumentLoadingTask | null = null;
 
   const supported = $derived(mimeType === 'application/pdf' || mimeType.startsWith('image/'));
+  const selectedProfile = $derived(getBrowserOcrProfile(selectedProfileId));
+  const activeProfile = $derived(getBrowserOcrProfile(activeProfileId));
+  const busy = $derived(phase === 'loading' || phase === 'reading');
 
   onMount(() => {
+    try {
+      const savedProfile = window.localStorage.getItem(OCR_PROFILE_STORAGE_KEY);
+      if (isBrowserOcrProfileId(savedProfile)) {
+        selectedProfileId = savedProfile;
+        activeProfileId = savedProfile;
+      }
+    } catch {
+      // Private browsing modes may disable localStorage; the safe default still works.
+    }
     if (autoStart && supported) void readLocally();
   });
 
@@ -45,8 +77,26 @@
     void disposeLocalResources();
   });
 
+  function selectProfile(event: Event) {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (!isBrowserOcrProfileId(value)) return;
+    selectedProfileId = value;
+    try {
+      window.localStorage.setItem(OCR_PROFILE_STORAGE_KEY, value);
+    } catch {
+      // The selection still applies to this run when localStorage is unavailable.
+    }
+  }
+
+  function selectDigitiseMode(mode: 'text' | 'formula') {
+    digitiseMode = mode;
+    if (mode === 'formula') void disposeLocalResources();
+  }
+
   async function readLocally() {
     if (!supported || phase === 'loading' || phase === 'reading') return;
+    const profile = getBrowserOcrProfile(selectedProfileId);
+    activeProfileId = profile.id;
     await disposeLocalResources();
     error = '';
     text = '';
@@ -54,7 +104,7 @@
     currentPage = 0;
     pageCount = 0;
     phase = 'loading';
-    status = 'Loading the private handwriting model…';
+    status = `Loading ${profile.label.toLowerCase()}…`;
 
     try {
       const response = await fetch(`/api/documents/${documentId}/original`, {
@@ -65,7 +115,7 @@
       const source = await response.blob();
 
       const { createLocalOcrRunner } = await import('$lib/client/local-ocr-runner');
-      runner = await createLocalOcrRunner();
+      runner = await createLocalOcrRunner(profile.id);
 
       phase = 'reading';
       const sources =
@@ -201,48 +251,95 @@
 
 {#if supported}
   <section class="local-ocr">
-    {#if phase === 'idle'}
-      <div class="local-ocr-start">
-        <p>{existingText ? 'Create a fresh text draft?' : 'Ready to read the handwriting.'}</p>
-        <button class="button button-primary" type="button" onclick={readLocally}>
-          {existingText ? 'Read again' : 'Read handwriting'}
-        </button>
-      </div>
-    {:else}
-      <div class="local-ocr-status" role="status" aria-live="polite">
-        {#if phase !== 'ready'}<LoaderCircle class="spinner" size={17} />{/if}
-        <span>{status}</span>
-        {#if pageCount}<strong>{currentPage}/{pageCount}</strong>{/if}
-      </div>
-    {/if}
-
-    {#if error}<p class="error-message" role="alert">{error}</p>{/if}
-
-    {#if phase === 'ready'}
-      <form
-        method="POST"
-        action="?/saveLocalOcr"
-        class="local-ocr-result"
-        use:enhance={() => {
-          return async ({ update, result }) => {
-            await update();
-            if (result.type === 'success') onsaved?.();
-          };
-        }}
+    <div class="digitise-switch" role="group" aria-label="Choose what to digitise">
+      <button
+        type="button"
+        aria-pressed={digitiseMode === 'text'}
+        class:active={digitiseMode === 'text'}
+        onclick={() => selectDigitiseMode('text')}
       >
-        <input type="hidden" name="documentId" value={documentId} />
-        <input type="hidden" name="confidence" value={confidence} />
-        <input type="hidden" name="engine" value="PaddleOCR.js PP-OCRv5 mobile English" />
-        <label for={`local-ocr-${documentId}`}>Review the text from {title}</label>
-        <textarea id={`local-ocr-${documentId}`} name="extractedText" rows="14" bind:value={text}
-        ></textarea>
-        <div class="form-actions">
-          <button class="button" type="button" onclick={readLocally}>Run again</button>
-          <button class="button button-primary" type="submit">
-            <Save size={15} /> Save text
+        <ScanText size={16} /> Text
+      </button>
+      <button
+        type="button"
+        aria-pressed={digitiseMode === 'formula'}
+        class:active={digitiseMode === 'formula'}
+        onclick={() => selectDigitiseMode('formula')}
+      >
+        <Sigma size={16} /> Formula to LaTeX
+      </button>
+    </div>
+
+    {#if digitiseMode === 'text'}
+      <div class="ocr-profile-picker">
+        <label for={`ocr-profile-${documentId}`}>Reading mode</label>
+        <select
+          id={`ocr-profile-${documentId}`}
+          value={selectedProfileId}
+          onchange={selectProfile}
+          disabled={busy}
+        >
+          {#each browserOcrProfiles as profile}
+            <option value={profile.id}>
+              {profile.label}{profile.recommended ? ' · Recommended' : ''}
+            </option>
+          {/each}
+        </select>
+        <p>{selectedProfile.description}</p>
+        <div class="ocr-profile-meta" aria-label="Reading mode details">
+          <span><ShieldCheck size={14} /> On this device</span>
+          <span><HardDriveDownload size={14} /> About 36 MB on first use</span>
+        </div>
+      </div>
+
+      {#if phase === 'idle'}
+        <div class="local-ocr-start">
+          <p>{existingText ? 'Create a fresh text draft?' : 'Ready to read the handwriting.'}</p>
+          <button class="button button-primary" type="button" onclick={readLocally}>
+            {existingText ? 'Read again' : 'Read handwriting'}
           </button>
         </div>
-      </form>
+      {:else}
+        <div class="local-ocr-status" role="status" aria-live="polite">
+          {#if phase !== 'ready'}<LoaderCircle class="spinner" size={17} />{/if}
+          <span>{status}</span>
+          {#if pageCount}<strong>{currentPage}/{pageCount}</strong>{/if}
+        </div>
+      {/if}
+
+      {#if error}<p class="error-message" role="alert">{error}</p>{/if}
+
+      {#if phase === 'ready'}
+        <form
+          method="POST"
+          action="?/saveLocalOcr"
+          class="local-ocr-result"
+          use:enhance={() => {
+            return async ({ update, result }) => {
+              await update();
+              if (result.type === 'success') onsaved?.();
+            };
+          }}
+        >
+          <input type="hidden" name="documentId" value={documentId} />
+          <input type="hidden" name="confidence" value={confidence} />
+          <input type="hidden" name="engine" value={activeProfile.engine} />
+          <input type="hidden" name="outputKind" value="text" />
+          <label for={`local-ocr-${documentId}`}
+            >Review the text from {title}<small>Read with {activeProfile.label}</small></label
+          >
+          <textarea id={`local-ocr-${documentId}`} name="extractedText" rows="14" bind:value={text}
+          ></textarea>
+          <div class="form-actions">
+            <button class="button" type="button" onclick={readLocally}>Run again</button>
+            <button class="button button-primary" type="submit">
+              <Save size={15} /> Save text
+            </button>
+          </div>
+        </form>
+      {/if}
+    {:else}
+      <FormulaLatexOcr {documentId} {title} {mimeType} {existingText} {onsaved} />
     {/if}
   </section>
 {/if}
@@ -260,9 +357,88 @@
     gap: 12px;
   }
 
+  .digitise-switch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+  }
+
+  .digitise-switch button {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--text-soft);
+    background: transparent;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .digitise-switch button:hover {
+    color: var(--text);
+  }
+
+  .digitise-switch button.active {
+    border-color: var(--border);
+    color: var(--text);
+    background: var(--surface);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent);
+  }
+
+  .digitise-switch button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
   .local-ocr-start p {
     margin: 0;
     color: var(--text-soft);
+  }
+
+  .ocr-profile-picker {
+    display: grid;
+    gap: 7px;
+  }
+
+  .ocr-profile-picker > label {
+    font-weight: 650;
+  }
+
+  .ocr-profile-picker select {
+    min-height: 42px;
+  }
+
+  .ocr-profile-picker p {
+    margin: 0;
+    color: var(--text-soft);
+    line-height: 1.45;
+  }
+
+  .ocr-profile-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .ocr-profile-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 26px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-soft);
+    font-size: 12px;
   }
 
   .local-ocr-status {
@@ -286,6 +462,16 @@
   .local-ocr-result {
     display: grid;
     gap: 9px;
+  }
+
+  .local-ocr-result > label {
+    display: grid;
+    gap: 2px;
+  }
+
+  .local-ocr-result > label small {
+    color: var(--text-soft);
+    font-weight: 400;
   }
 
   .local-ocr-result textarea {
@@ -312,6 +498,14 @@
 
     .local-ocr-start .button,
     .local-ocr-result .button {
+      min-height: 44px;
+    }
+
+    .ocr-profile-picker select {
+      min-height: 44px;
+    }
+
+    .digitise-switch button {
       min-height: 44px;
     }
   }
