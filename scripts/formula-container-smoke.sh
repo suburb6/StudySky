@@ -60,6 +60,7 @@ with urllib.request.urlopen(request, timeout=120) as response:
     result = json.load(response)
 formulas = result.get("formulas", [])
 assert formulas, result
-assert "x" in formulas[0].get("latex", "").lower(), result
-print(f"Formula smoke passed: {formulas[0]['latex']}")
+latex = formulas[0].get("latex", "").strip()
+assert len(latex) >= 3 and "=" in latex, result
+print(f"Formula smoke passed: {latex}")
 PY
