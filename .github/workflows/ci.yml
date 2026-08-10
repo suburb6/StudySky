@@ -105,7 +105,7 @@ jobs:
         run: python -m unittest formula-service/test_server.py
       - name: Build the optional formula image
         run: docker build --file Dockerfile.formula --target formula-runtime --tag studysky-formula:local .
-      - name: Convert a handwriting-style formula with the real model
+      - name: Convert a synthetic equation with the real model
         run: FORMULA_SMOKE_SOURCE_BUILD=true bash scripts/formula-container-smoke.sh
       - name: Stop formula verification container
         if: always()

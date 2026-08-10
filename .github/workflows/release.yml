@@ -193,7 +193,7 @@ jobs:
           done
       - name: Verify blank install from the published base image
         run: CONTAINER_SMOKE_RELEASE_IMAGE=true bash scripts/container-smoke.sh
-      - name: Verify handwritten formula recognition in the published image
+      - name: Verify formula recognition in the published image
         run: bash scripts/formula-container-smoke.sh
       - name: Stop verification containers
         if: always()

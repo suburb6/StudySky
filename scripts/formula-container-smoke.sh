@@ -37,10 +37,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 image = Image.new("RGB", (1200, 300), "white")
 draw = ImageDraw.Draw(image)
-font = ImageFont.truetype(
-    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
-    112,
-)
+font = ImageFont.load_default(size=112)
 draw.text((55, 75), "x² + y² = z²", font=font, fill="#111111")
 buffer = io.BytesIO()
 image.save(buffer, format="PNG")

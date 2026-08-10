@@ -42,7 +42,7 @@ Formula service unit tests do not load the model:
 python -m unittest formula-service/test_server.py
 ```
 
-The CI formula-image gate builds the pinned container and runs a real handwritten-style equation
+The CI formula-image gate builds the pinned container and runs a real synthetic equation
 through it with `scripts/formula-container-smoke.sh`. To run that source-build smoke locally, set
 `FORMULA_SMOKE_SOURCE_BUILD=true` before invoking the script.
 

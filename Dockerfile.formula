@@ -71,20 +71,27 @@ ENV HOME=/tmp/studysky-formula \
     FORMULA_OCR_LAYOUT_MODEL_DIR=/models/PP-DocLayout-M_infer
 WORKDIR /service
 RUN apt-get update \
+    && apt-get upgrade --yes \
     && apt-get install --yes --no-install-recommends \
       libgl1 \
       libglib2.0-0 \
       libgomp1 \
-      fonts-dejavu-core \
     && groupadd --system --gid 10002 studysky-formula \
     && useradd --system --uid 10002 --gid studysky-formula --home-dir /service studysky-formula \
-    && rm -rf /var/lib/apt/lists/* /usr/local/lib/python3.11/site-packages/pip* \
-    && rm -f /usr/local/bin/pip /usr/local/bin/pip3
+    && rm -rf \
+      /var/lib/apt/lists/* \
+      /usr/local/lib/python3.11/site-packages/pip* \
+      /usr/local/lib/python3.11/site-packages/setuptools* \
+      /usr/local/lib/python3.11/site-packages/wheel* \
+    && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/wheel
 COPY --from=formula-dependencies --chown=studysky-formula:studysky-formula /opt/venv /opt/venv
 COPY --from=formula-models --chown=studysky-formula:studysky-formula /models /models
 COPY --chown=studysky-formula:studysky-formula formula-service/server.py /service/server.py
-RUN rm -rf /opt/venv/lib/python3.11/site-packages/pip* \
-    && rm -f /opt/venv/bin/pip /opt/venv/bin/pip3
+RUN rm -rf \
+      /opt/venv/lib/python3.11/site-packages/pip* \
+      /opt/venv/lib/python3.11/site-packages/setuptools* \
+      /opt/venv/lib/python3.11/site-packages/wheel* \
+    && rm -f /opt/venv/bin/pip /opt/venv/bin/pip3 /opt/venv/bin/wheel
 USER studysky-formula
 EXPOSE 8080
 HEALTHCHECK --interval=20s --timeout=5s --start-period=120s --retries=6 \
