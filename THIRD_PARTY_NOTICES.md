@@ -43,6 +43,22 @@ PaddleOCR code and published model assets are supplied by PaddlePaddle under Apa
 Runtime Web is supplied by Microsoft under MIT. StudySky does not modify the downloaded model
 artifacts; it verifies their expected length and digest before serving them to authenticated users.
 
+### Optional formula image
+
+The `-formula` image contains PaddlePaddle, PaddleOCR, PaddleX, and these official Paddle model
+archives:
+
+| Artifact                    | Pinned SHA-256                                                     |
+| --------------------------- | ------------------------------------------------------------------ |
+| `PP-FormulaNet-S_infer.tar` | `a3ea2c005abdbe525d9e46c1e2e96021d900b0dd45535a112260d46dd437612e` |
+| `PP-DocLayout-M_infer.tar`  | `f61a1839dac9dfd44fe427df84edd5635f4661e84fae9c2c34cdf9c65e5b7b5e` |
+
+PaddlePaddle, PaddleOCR, PaddleX, and the published Paddle model assets are Apache-2.0. The image
+also includes OpenCV (Apache-2.0), NumPy (BSD-3-Clause), Pillow (HPND), and other locked Python and
+Debian dependencies. Exact versions and complete transitive inventory are recorded in
+`formula-service/requirements.lock` and the release SBOM. Architecture-specific PaddlePaddle wheels
+and both model archives are digest-verified during the image build.
+
 ## Optional OCR image
 
 - OCRmyPDF: MPL-2.0 — https://github.com/ocrmypdf/OCRmyPDF

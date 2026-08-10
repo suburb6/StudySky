@@ -1,0 +1,7 @@
+services:
+  formula-ocr:
+    image: studysky-formula:local
+    build:
+      context: .
+      dockerfile: Dockerfile.formula
+      target: formula-runtime

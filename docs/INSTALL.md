@@ -13,7 +13,7 @@ accounts, PostgreSQL database, and upload volume.
    - macOS/Linux: `cp .env.example .env`
 
 4. Edit `.env`. For a local install use `ORIGIN=http://localhost:3000`. Set
-   `STUDYSKY_VERSION` to an immutable release such as `v0.1.0`.
+   `STUDYSKY_VERSION` to an immutable release such as `v0.2.0`.
 5. Generate separate secrets. A URL-safe database password can be generated with
    `openssl rand -hex 32`. Generate a different administrator password. For
    `SETTINGS_ENCRYPTION_KEY`, generate exactly 32 random bytes encoded as base64.
@@ -63,6 +63,22 @@ docker compose -f compose.yml -f compose.ocr.yml up -d worker
 
 Set `OCR_ENABLED=true` and the required languages in `.env`. See [OCR.md](OCR.md).
 
+## Optional formula-to-LaTeX
+
+Formula recognition is separate from text and searchable-PDF OCR. Generate a service token, set
+`FORMULA_OCR_TOKEN` in `.env`, then start the signed formula image on the private Compose network:
+
+```sh
+openssl rand -hex 32
+docker compose -f compose.yml -f compose.formula.yml pull
+docker compose -f compose.yml -f compose.formula.yml up -d formula-ocr web
+```
+
+Do not publish port 8080 from `formula-ocr`. The web container authenticates to it with the private
+token. The service processes one request at a time and is best suited to one page at a time. For a
+source build, also add `-f compose.formula-build.yml`; see [OCR.md](OCR.md) for the complete command,
+privacy behavior, and limitations.
+
 ## Verify the installation
 
 ```sh
@@ -71,4 +87,5 @@ curl --fail http://127.0.0.1:3000/health/ready
 ```
 
 `postgres`, `web`, and `worker` should be running, and `migrate` should have exited successfully.
-If setup fails, inspect `docker compose logs postgres migrate seed web worker`.
+When enabled, `formula-ocr` should also be healthy. If setup fails, inspect
+`docker compose logs postgres migrate seed web worker formula-ocr`.

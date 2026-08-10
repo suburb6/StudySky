@@ -1,0 +1,44 @@
+services:
+  web:
+    environment:
+      FORMULA_OCR_ENABLED: 'true'
+      FORMULA_OCR_URL: http://formula-ocr:8080
+      FORMULA_OCR_TOKEN: ${FORMULA_OCR_TOKEN:?Set FORMULA_OCR_TOKEN}
+      FORMULA_OCR_TIMEOUT_MS: ${FORMULA_OCR_TIMEOUT_MS:-90000}
+      FORMULA_OCR_MAX_IMAGE_BYTES: ${FORMULA_OCR_MAX_IMAGE_BYTES:-6291456}
+      FORMULA_OCR_MAX_PIXELS: ${FORMULA_OCR_MAX_PIXELS:-16000000}
+    depends_on:
+      formula-ocr:
+        condition: service_healthy
+    networks:
+      - default
+      - formula_internal
+
+  formula-ocr:
+    image: ghcr.io/suburb6/studysky:${STUDYSKY_VERSION:-v0.2.0}-formula
+    restart: unless-stopped
+    environment:
+      FORMULA_OCR_TOKEN: ${FORMULA_OCR_TOKEN:?Set FORMULA_OCR_TOKEN}
+      FORMULA_OCR_CPU_THREADS: ${FORMULA_OCR_CPU_THREADS:-4}
+      FORMULA_OCR_ENABLE_MKLDNN: ${FORMULA_OCR_ENABLE_MKLDNN:-false}
+      FORMULA_OCR_MAX_IMAGE_BYTES: ${FORMULA_OCR_MAX_IMAGE_BYTES:-6291456}
+      FORMULA_OCR_MAX_PIXELS: ${FORMULA_OCR_MAX_PIXELS:-16000000}
+      FORMULA_OCR_QUEUE_TIMEOUT_SECONDS: ${FORMULA_OCR_QUEUE_TIMEOUT_SECONDS:-60}
+    expose:
+      - '8080'
+    init: true
+    networks:
+      - formula_internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    pids_limit: 512
+    shm_size: 256m
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+
+networks:
+  formula_internal:
+    internal: true

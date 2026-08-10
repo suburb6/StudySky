@@ -1,8 +1,8 @@
 {
   "name": "studysky",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Private, self-hosted study workspace for schedules, tasks, revision, documents, and on-device handwriting OCR.",
+  "description": "Private, self-hosted study workspace for schedules, tasks, revision, documents, handwriting OCR, and optional formula-to-LaTeX.",
   "license": "AGPL-3.0-only",
   "author": "StudySky contributors",
   "homepage": "https://github.com/suburb6/StudySky#readme",
@@ -20,6 +20,7 @@
     "sveltekit",
     "postgresql",
     "ocr",
+    "latex",
     "pwa"
   ],
   "type": "module",

@@ -36,6 +36,16 @@ Integration tests run when `TEST_DATABASE_URL` is present. The container gate in
 `scripts/container-smoke.sh` verifies a blank installation, login, upload persistence, backup, and
 restore. Test data must use `example.test`, generated identifiers, and synthetic module names.
 
+Formula service unit tests do not load the model:
+
+```sh
+python -m unittest formula-service/test_server.py
+```
+
+The CI formula-image gate builds the pinned container and runs a real handwritten-style equation
+through it with `scripts/formula-container-smoke.sh`. To run that source-build smoke locally, set
+`FORMULA_SMOKE_SOURCE_BUILD=true` before invoking the script.
+
 ## Database changes
 
 Edit `src/lib/server/db/schema.ts`, run `npm run db:generate -- --name descriptive_name`, and review

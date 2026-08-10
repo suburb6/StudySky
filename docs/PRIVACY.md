@@ -19,6 +19,9 @@ analytics, advertising, tracking pixel, or telemetry endpoint.
 - Browsers connect to the operator's StudySky origin.
 - Browser OCR model requests go to that same origin. The server may download pinned model artifacts
   from Paddle's distribution host and cache them.
+- If the operator enables formula-to-LaTeX, the selected image or PDF page travels only from the
+  browser to the StudySky web service and its private formula container. The container performs
+  local inference, returns LaTeX, and does not persist the request image.
 - Push notifications use an approved public browser push service only when the operator configures
   VAPID and a user opts in. Subscriptions are bound to the login session and stop on session
   revocation.

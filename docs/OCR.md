@@ -1,6 +1,6 @@
 # OCR and physical notes
 
-StudySky provides two local/self-hosted OCR paths. Neither requires a commercial OCR API.
+StudySky provides three local/self-hosted reading paths. None requires a commercial OCR API.
 
 ## Browser handwriting OCR
 
@@ -23,14 +23,62 @@ text is always a draft. StudySky keeps saved corrections and does not replace th
 when OCR is run again.
 
 The Latin recogniser may preserve individual symbols, but this OCR pipeline returns plain text
-lines. It does not reconstruct complex formula layout as LaTeX, infer missing content, or generate
-explanations. Those capabilities require a separately reviewed formula or vision model and are not
-described as local OCR.
+lines. It does not reconstruct complex formula layout as LaTeX. Use the separate formula mode when
+the spatial structure of an equation matters.
 
 The document-scanner UI performs local crop, perspective, rotation, and compression work before an
 upload. The note is not submitted to a third-party OCR service. Model artifacts are fetched from
 the Paddle upstream through the StudySky server and checked against pinned byte sizes and SHA-256
 hashes.
+
+## Optional formula-to-LaTeX
+
+An operator can add the optional `-formula` image. It uses PaddleOCR's PP-FormulaNet-S recogniser
+with PP-DocLayout-M to locate equations on a page. Paddle describes PP-FormulaNet as supporting
+printed and handwritten formulas. StudySky returns editable LaTeX only: it does not explain,
+solve, grade, or silently correct the mathematics. See Paddle's
+[formula-recognition documentation](https://www.paddleocr.ai/main/en/version3.x/module_usage/formula_recognition.html).
+
+The workflow stays inside the Library's **Digitise notes** dialog:
+
+1. Choose **Formula to LaTeX**.
+2. Prepare an image or one PDF page.
+3. Find formula regions, or use the close-up fallback when the entire image is one equation.
+4. Review the LaTeX, then copy it or append it to the document's saved text.
+
+Only the prepared page is sent over the private Compose network to the installation's own formula
+container. It is not sent to Paddle or another OCR API. The service does not persist request
+images, include note content in normal logs, or expose a host port. Inference is serialised so one
+small host is not flooded by simultaneous model runs.
+
+Formula recognition is disabled by default because it uses substantially more disk, memory, and
+CPU than browser text OCR. To enable the released image, generate a private service token and add
+it to `.env`:
+
+```sh
+openssl rand -hex 32
+# Paste the result after FORMULA_OCR_TOKEN= in .env
+docker compose -f compose.yml -f compose.formula.yml pull
+docker compose -f compose.yml -f compose.formula.yml up -d postgres migrate formula-ocr web worker
+```
+
+For a full source build:
+
+```sh
+docker compose -f compose.yml -f compose.build.yml -f compose.formula.yml \
+  -f compose.formula-build.yml up -d --build postgres migrate formula-ocr web worker
+```
+
+The formula image embeds exact, digest-pinned model archives and architecture-specific
+PaddlePaddle wheels during its build. It does not download a replacement model at runtime.
+
+### Interpreting the published benchmark
+
+Paddle's official PP-FormulaNet-S table reports **87.00 En-BLEU**, a 224 MB inference model, and
+254.39 ms model-inference time in its listed CPU test environment. En-BLEU measures similarity to
+reference LaTeX; it is not “87% accuracy,” a StudySky end-to-end result, or a guarantee for an
+individual student's handwriting. Page detection, capture quality, notation, and hardware all
+affect real results. Always compare the draft with the original.
 
 ## Adding another browser model
 
@@ -41,9 +89,10 @@ privacy guarantees of the local reader.
 A maintainer can add a compatible PaddleOCR ONNX recognition model by adding a curated reading
 profile, pinning the official archive URL, exact byte size, and SHA-256 digest in the server model
 manifest, updating the third-party notices, and running the release checks. The archive must match
-the format required by the pinned PaddleOCR.js version. New formula, layout, or vision pipelines
-need a separate resource, privacy, licence, and output-review design rather than appearing as a
-drop-in text model.
+the format required by the pinned PaddleOCR.js version. Formula models are curated in the same
+way at build time; the student selector never accepts arbitrary model URLs. New layout or vision
+pipelines need a separate resource, privacy, licence, and output-review design rather than
+appearing as a drop-in text model.
 
 ## Searchable-PDF OCR worker
 

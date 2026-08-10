@@ -4,10 +4,14 @@ All notable changes are documented here. StudySky follows Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-10
+
 ### Added
 
 - Curated on-device OCR reading modes for English handwriting and Latin-language notes with common
   symbols
+- Optional self-hosted formula-to-LaTeX using PP-FormulaNet-S and PP-DocLayout-M, with editable
+  review, page-by-page PDF support, and a signed multi-architecture `-formula` image
 
 ## [0.1.0] - 2026-08-09
 
@@ -27,4 +31,6 @@ All notable changes are documented here. StudySky follows Semantic Versioning.
 - Account-scoped offline queues, session-bound push subscriptions, and restricted push egress
 - Pinned GitHub Actions plus Gitleaks, npm audit, CodeQL, and Trivy release gates
 
+[Unreleased]: https://github.com/suburb6/StudySky/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/suburb6/StudySky/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/suburb6/StudySky/releases/tag/v0.1.0
