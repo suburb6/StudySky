@@ -11,6 +11,7 @@
     Server,
     Sigma
   } from '@lucide/svelte';
+  import type { AvailableOcrProvider } from '$lib/domain/ocr-providers';
 
   type FormulaPhase =
     | 'checking'
@@ -26,6 +27,7 @@
     model: string;
     layoutModel: string;
     engine: string;
+    text?: string;
     formulas: Array<{ latex: string; box: [number, number, number, number] | null }>;
   };
 
@@ -59,9 +61,14 @@
   let pdfDocument: import('pdfjs-dist').PDFDocumentProxy | null = null;
   let originalImage: Blob | null = null;
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
+  let providers = $state<AvailableOcrProvider[]>([]);
+  let selectedProviderId = $state('');
 
   const supported = $derived(mimeType === 'application/pdf' || mimeType.startsWith('image/'));
   const busy = $derived(phase === 'checking' || phase === 'preparing' || phase === 'reading');
+  const selectedProvider = $derived(
+    providers.find((provider) => provider.id === selectedProviderId) ?? providers[0]
+  );
 
   onMount(() => {
     void checkAvailability();
@@ -77,21 +84,20 @@
     status = 'Checking the self-hosted formula model…';
     error = '';
     try {
-      const response = await fetch('/api/formula-recognition', {
+      const response = await fetch('/api/ocr-providers?capability=formula_latex', {
         credentials: 'same-origin',
         cache: 'no-store'
       });
       if (!response.ok) throw new Error('Formula recognition status could not be checked.');
-      const availability = (await response.json()) as { enabled: boolean; ready: boolean };
-      if (!availability.enabled) {
+      const availability = (await response.json()) as { providers?: AvailableOcrProvider[] };
+      providers = availability.providers ?? [];
+      if (!providers.length) {
         phase = 'disabled';
         status = '';
         return;
       }
-      if (!availability.ready) {
-        phase = 'unavailable';
-        status = '';
-        return;
+      if (!providers.some((provider) => provider.id === selectedProviderId)) {
+        selectedProviderId = providers[0].id;
       }
       phase = 'idle';
       status = '';
@@ -225,7 +231,12 @@
     noFormulaFound = false;
     copied = false;
     try {
-      const response = await fetch(`/api/formula-recognition?mode=${mode}`, {
+      const params = new URLSearchParams({
+        provider: selectedProviderId,
+        capability: 'formula_latex',
+        mode
+      });
+      const response = await fetch(`/api/ocr-recognition?${params}`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': pageBlob.type || 'image/jpeg' },
@@ -233,15 +244,20 @@
       });
       const result = (await response.json()) as FormulaResult & { error?: string };
       if (!response.ok) throw new Error(result.error || 'Formula recognition could not finish.');
-      if (!Array.isArray(result.formulas) || result.formulas.length === 0) {
+      if (
+        (!Array.isArray(result.formulas) || result.formulas.length === 0) &&
+        !result.text?.trim()
+      ) {
         phase = 'prepared';
         status = '';
         noFormulaFound = true;
         return;
       }
       engine = result.engine;
-      formulaCount = result.formulas.length;
-      latex = result.formulas.map((formula) => `\\[\n${formula.latex.trim()}\n\\]`).join('\n\n');
+      formulaCount = result.formulas?.length || 1;
+      latex = result.formulas?.length
+        ? result.formulas.map((formula) => `\\[\n${formula.latex.trim()}\n\\]`).join('\n\n')
+        : result.text!.trim();
       phase = 'ready';
       status = `${formulaCount} formula${formulaCount === 1 ? '' : 's'} ready to review.`;
     } catch (caught) {
@@ -290,144 +306,167 @@
       <LoaderCircle class="spinner" size={17} />
       <span>{status}</span>
     </div>
-  {:else if phase === 'disabled'}
-    <div class="formula-availability">
-      <Server size={18} />
-      <div>
-        <strong>Formula recognition is not enabled</strong>
-        <p>The host can add the optional formula Compose profile. Text OCR still works normally.</p>
-      </div>
-    </div>
-  {:else if phase === 'unavailable'}
-    <div class="formula-availability">
-      <Server size={18} />
-      <div>
-        <strong>The formula model is not ready</strong>
-        <p>It may still be starting. This model is optional and runs on the StudySky server.</p>
-      </div>
-      <button class="button" type="button" onclick={checkAvailability}>Check again</button>
-    </div>
-  {:else if phase === 'idle'}
-    <div class="formula-start">
-      <div>
-        <strong>Turn formulas into editable LaTeX</strong>
-        <p>StudySky finds formulas on one page at a time. The result remains a draft.</p>
-      </div>
-      <button class="button button-primary" type="button" onclick={prepareDocument}>
-        <Sigma size={16} /> Prepare page
-      </button>
-    </div>
   {:else}
-    {#if previewUrl}
-      <div class="formula-page">
-        {#if pageCount > 1}
-          <div class="page-picker" aria-label="PDF page controls">
-            <button
-              class="icon-button"
-              type="button"
-              aria-label="Previous page"
-              title="Previous page"
-              disabled={busy || currentPage <= 1}
-              onclick={() => loadPage(currentPage - 1)}
-            >
-              <ChevronLeft size={17} />
-            </button>
-            <label>
-              <span class="sr-only">Choose PDF page</span>
-              <select
-                value={currentPage}
-                disabled={busy}
-                onchange={(event) => loadPage(Number(event.currentTarget.value))}
+    {#if providers.length}
+      <div class="formula-provider-picker">
+        <label for={`formula-provider-${documentId}`}>Formula model</label>
+        <select
+          id={`formula-provider-${documentId}`}
+          bind:value={selectedProviderId}
+          disabled={busy || phase === 'ready'}
+        >
+          {#each providers as provider}
+            <option value={provider.id}>{provider.name}</option>
+          {/each}
+        </select>
+        <p>
+          {selectedProvider?.description}
+          {selectedProvider?.location === 'server'
+            ? ' The prepared page is sent to that service.'
+            : ''}
+        </p>
+      </div>
+    {/if}
+    {#if phase === 'disabled'}
+      <div class="formula-availability">
+        <Server size={18} />
+        <div>
+          <strong>Formula recognition is not enabled</strong>
+          <p>The administrator can enable the Compose service or connect a compatible model.</p>
+        </div>
+      </div>
+    {:else if phase === 'unavailable'}
+      <div class="formula-availability">
+        <Server size={18} />
+        <div>
+          <strong>The formula model is not ready</strong>
+          <p>It may still be starting. This model is optional and runs on the StudySky server.</p>
+        </div>
+        <button class="button" type="button" onclick={checkAvailability}>Check again</button>
+      </div>
+    {:else if phase === 'idle'}
+      <div class="formula-start">
+        <div>
+          <strong>Turn formulas into editable LaTeX</strong>
+          <p>StudySky finds formulas on one page at a time. The result remains a draft.</p>
+        </div>
+        <button class="button button-primary" type="button" onclick={prepareDocument}>
+          <Sigma size={16} /> Prepare page
+        </button>
+      </div>
+    {:else}
+      {#if previewUrl}
+        <div class="formula-page">
+          {#if pageCount > 1}
+            <div class="page-picker" aria-label="PDF page controls">
+              <button
+                class="icon-button"
+                type="button"
+                aria-label="Previous page"
+                title="Previous page"
+                disabled={busy || currentPage <= 1}
+                onclick={() => loadPage(currentPage - 1)}
               >
-                {#each Array.from({ length: pageCount }, (_, index) => index + 1) as pageNumber}
-                  <option value={pageNumber}>Page {pageNumber} of {pageCount}</option>
-                {/each}
-              </select>
-            </label>
-            <button
-              class="icon-button"
-              type="button"
-              aria-label="Next page"
-              title="Next page"
-              disabled={busy || currentPage >= pageCount}
-              onclick={() => loadPage(currentPage + 1)}
-            >
-              <ChevronRight size={17} />
+                <ChevronLeft size={17} />
+              </button>
+              <label>
+                <span class="sr-only">Choose PDF page</span>
+                <select
+                  value={currentPage}
+                  disabled={busy}
+                  onchange={(event) => loadPage(Number(event.currentTarget.value))}
+                >
+                  {#each Array.from({ length: pageCount }, (_, index) => index + 1) as pageNumber}
+                    <option value={pageNumber}>Page {pageNumber} of {pageCount}</option>
+                  {/each}
+                </select>
+              </label>
+              <button
+                class="icon-button"
+                type="button"
+                aria-label="Next page"
+                title="Next page"
+                disabled={busy || currentPage >= pageCount}
+                onclick={() => loadPage(currentPage + 1)}
+              >
+                <ChevronRight size={17} />
+              </button>
+            </div>
+          {/if}
+          <div class="page-preview">
+            <img src={previewUrl} alt={`Page ${currentPage} of ${title}`} />
+          </div>
+        </div>
+      {/if}
+
+      {#if phase === 'preparing' || phase === 'reading'}
+        <div class="formula-status" role="status" aria-live="polite">
+          <LoaderCircle class="spinner" size={17} />
+          <span>{status}</span>
+        </div>
+      {:else if phase === 'prepared'}
+        <div class="formula-run">
+          <div>
+            <span><Server size={14} /> Self-hosted</span>
+            <span><Sigma size={14} /> {selectedProvider?.name}</span>
+          </div>
+          <button class="button button-primary" type="button" onclick={() => scanPage('page')}>
+            Find formulas on this page
+          </button>
+        </div>
+        {#if noFormulaFound}
+          <div class="formula-empty" role="status">
+            <p>No formula region was found on this page.</p>
+            <button class="button" type="button" onclick={() => scanPage('formula')}>
+              This image is one close-up formula
             </button>
           </div>
         {/if}
-        <div class="page-preview">
-          <img src={previewUrl} alt={`Page ${currentPage} of ${title}`} />
-        </div>
-      </div>
-    {/if}
-
-    {#if phase === 'preparing' || phase === 'reading'}
-      <div class="formula-status" role="status" aria-live="polite">
-        <LoaderCircle class="spinner" size={17} />
-        <span>{status}</span>
-      </div>
-    {:else if phase === 'prepared'}
-      <div class="formula-run">
-        <div>
-          <span><Server size={14} /> Self-hosted</span>
-          <span><Sigma size={14} /> PP-FormulaNet-S</span>
-        </div>
-        <button class="button button-primary" type="button" onclick={() => scanPage('page')}>
-          Find formulas on this page
-        </button>
-      </div>
-      {#if noFormulaFound}
-        <div class="formula-empty" role="status">
-          <p>No formula region was found on this page.</p>
-          <button class="button" type="button" onclick={() => scanPage('formula')}>
-            This image is one close-up formula
-          </button>
-        </div>
       {/if}
-    {/if}
 
-    {#if phase === 'ready'}
-      <p class="sr-only" role="status" aria-live="polite">{status}</p>
-      <form
-        method="POST"
-        action="?/saveLocalOcr"
-        class="formula-result"
-        use:enhance={() => {
-          return async ({ update, result }) => {
-            await update();
-            if (result.type === 'success') onsaved?.();
-          };
-        }}
-      >
-        <input type="hidden" name="documentId" value={documentId} />
-        <input type="hidden" name="engine" value={engine} />
-        <input type="hidden" name="outputKind" value="formula_latex" />
-        <label for={`formula-latex-${documentId}`}>
-          Review the LaTeX from page {currentPage}
-          <small>
-            {formulaCount} formula{formulaCount === 1 ? '' : 's'} · {existingText
-              ? 'Adds below existing document text'
-              : 'Saves with this document'}
-          </small>
-        </label>
-        <textarea
-          id={`formula-latex-${documentId}`}
-          name="extractedText"
-          rows="14"
-          bind:value={latex}
-          spellcheck="false"
-        ></textarea>
-        <div class="form-actions formula-actions">
-          <button class="button" type="button" onclick={() => scanPage('page')}>Scan again</button>
-          <button class="button" type="button" onclick={copyLatex}>
-            {#if copied}<Check size={15} /> Copied{:else}<Copy size={15} /> Copy LaTeX{/if}
-          </button>
-          <button class="button button-primary" type="submit">
-            <Save size={15} /> Add to document
-          </button>
-        </div>
-      </form>
+      {#if phase === 'ready'}
+        <p class="sr-only" role="status" aria-live="polite">{status}</p>
+        <form
+          method="POST"
+          action="?/saveLocalOcr"
+          class="formula-result"
+          use:enhance={() => {
+            return async ({ update, result }) => {
+              await update();
+              if (result.type === 'success') onsaved?.();
+            };
+          }}
+        >
+          <input type="hidden" name="documentId" value={documentId} />
+          <input type="hidden" name="engine" value={engine} />
+          <input type="hidden" name="outputKind" value="formula_latex" />
+          <label for={`formula-latex-${documentId}`}>
+            Review the LaTeX from page {currentPage}
+            <small>
+              {formulaCount} formula{formulaCount === 1 ? '' : 's'} · {existingText
+                ? 'Adds below existing document text'
+                : 'Saves with this document'}
+            </small>
+          </label>
+          <textarea
+            id={`formula-latex-${documentId}`}
+            name="extractedText"
+            rows="14"
+            bind:value={latex}
+            spellcheck="false"
+          ></textarea>
+          <div class="form-actions formula-actions">
+            <button class="button" type="button" onclick={() => scanPage('page')}>Scan again</button
+            >
+            <button class="button" type="button" onclick={copyLatex}>
+              {#if copied}<Check size={15} /> Copied{:else}<Copy size={15} /> Copy LaTeX{/if}
+            </button>
+            <button class="button button-primary" type="submit">
+              <Save size={15} /> Add to document
+            </button>
+          </div>
+        </form>
+      {/if}
     {/if}
   {/if}
 
@@ -438,6 +477,26 @@
   .formula-reader {
     display: grid;
     gap: 14px;
+  }
+
+  .formula-provider-picker {
+    display: grid;
+    gap: 6px;
+  }
+
+  .formula-provider-picker label {
+    font-weight: 650;
+  }
+
+  .formula-provider-picker select {
+    min-height: 42px;
+  }
+
+  .formula-provider-picker p {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 12px;
+    line-height: 1.45;
   }
 
   .formula-status,

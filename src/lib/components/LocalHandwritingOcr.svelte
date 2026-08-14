@@ -15,9 +15,9 @@
     browserOcrProfiles,
     defaultBrowserOcrProfileId,
     getBrowserOcrProfile,
-    isBrowserOcrProfileId,
-    type BrowserOcrProfileId
+    isBrowserOcrProfileId
   } from '$lib/domain/browser-ocr-profiles';
+  import type { AvailableOcrProvider } from '$lib/domain/ocr-providers';
 
   const OCR_PROFILE_STORAGE_KEY = 'studysky:browser-ocr-profile';
 
@@ -50,37 +50,71 @@
   let currentPage = $state(0);
   let pageCount = $state(0);
   let digitiseMode = $state<'text' | 'formula'>('text');
-  let selectedProfileId = $state<BrowserOcrProfileId>(defaultBrowserOcrProfileId);
-  let activeProfileId = $state<BrowserOcrProfileId>(defaultBrowserOcrProfileId);
+  let selectedReaderId = $state(`browser:${defaultBrowserOcrProfileId}`);
+  let activeEngine = $state<string>(getBrowserOcrProfile(defaultBrowserOcrProfileId).engine);
+  let activeReaderName = $state<string>(getBrowserOcrProfile(defaultBrowserOcrProfileId).label);
+  let textProviders = $state<AvailableOcrProvider[]>(
+    browserOcrProfiles.map((profile) => ({
+      id: `browser:${profile.id}`,
+      name: profile.label,
+      description: profile.description,
+      capabilities: ['text'],
+      languages: profile.id === 'latin' ? ['English', 'French'] : ['English'],
+      location: 'browser',
+      model: profile.recognitionModelName
+    }))
+  );
   let runner: OcrRunner | null = null;
   let pdfTask: import('pdfjs-dist').PDFDocumentLoadingTask | null = null;
 
   const supported = $derived(mimeType === 'application/pdf' || mimeType.startsWith('image/'));
-  const selectedProfile = $derived(getBrowserOcrProfile(selectedProfileId));
-  const activeProfile = $derived(getBrowserOcrProfile(activeProfileId));
+  const selectedReader = $derived(
+    textProviders.find((provider) => provider.id === selectedReaderId) ?? textProviders[0]
+  );
   const busy = $derived(phase === 'loading' || phase === 'reading');
 
   onMount(() => {
     try {
       const savedProfile = window.localStorage.getItem(OCR_PROFILE_STORAGE_KEY);
       if (isBrowserOcrProfileId(savedProfile)) {
-        selectedProfileId = savedProfile;
-        activeProfileId = savedProfile;
+        selectedReaderId = `browser:${savedProfile}`;
+      } else if (savedProfile) {
+        selectedReaderId = savedProfile;
       }
     } catch {
       // Private browsing modes may disable localStorage; the safe default still works.
     }
-    if (autoStart && supported) void readLocally();
+    void loadTextProviders().then(() => {
+      if (autoStart && supported) void readText();
+    });
   });
 
   onDestroy(() => {
     void disposeLocalResources();
   });
 
-  function selectProfile(event: Event) {
+  async function loadTextProviders() {
+    try {
+      const response = await fetch('/api/ocr-providers?capability=text', {
+        credentials: 'same-origin',
+        cache: 'no-store'
+      });
+      if (!response.ok) return;
+      const result = (await response.json()) as { providers?: AvailableOcrProvider[] };
+      if (result.providers?.length) textProviders = result.providers;
+      if (!textProviders.some((provider) => provider.id === selectedReaderId)) {
+        selectedReaderId = `browser:${defaultBrowserOcrProfileId}`;
+      }
+    } catch {
+      // Built-in browser OCR remains available when provider discovery fails.
+    }
+  }
+
+  function selectReader(event: Event) {
     const value = (event.currentTarget as HTMLSelectElement).value;
-    if (!isBrowserOcrProfileId(value)) return;
-    selectedProfileId = value;
+    const browserProfile = value.startsWith('browser:') ? value.slice(8) : '';
+    if (browserProfile && !isBrowserOcrProfileId(browserProfile)) return;
+    selectedReaderId = value;
     try {
       window.localStorage.setItem(OCR_PROFILE_STORAGE_KEY, value);
     } catch {
@@ -93,10 +127,15 @@
     if (mode === 'formula') void disposeLocalResources();
   }
 
-  async function readLocally() {
+  async function readText() {
     if (!supported || phase === 'loading' || phase === 'reading') return;
-    const profile = getBrowserOcrProfile(selectedProfileId);
-    activeProfileId = profile.id;
+    const provider = selectedReader;
+    const browserProfileId = provider.id.startsWith('browser:') ? provider.id.slice(8) : '';
+    const localProfile = isBrowserOcrProfileId(browserProfileId)
+      ? getBrowserOcrProfile(browserProfileId)
+      : null;
+    activeEngine = localProfile?.engine ?? provider.name;
+    activeReaderName = provider.name;
     await disposeLocalResources();
     error = '';
     text = '';
@@ -104,7 +143,9 @@
     currentPage = 0;
     pageCount = 0;
     phase = 'loading';
-    status = `Loading ${profile.label.toLowerCase()}…`;
+    status = localProfile
+      ? `Loading ${localProfile.label.toLowerCase()}…`
+      : `Connecting to ${provider.name}…`;
 
     try {
       const response = await fetch(`/api/documents/${documentId}/original`, {
@@ -114,8 +155,10 @@
       if (!response.ok) throw new Error('The original document could not be opened.');
       const source = await response.blob();
 
-      const { createLocalOcrRunner } = await import('$lib/client/local-ocr-runner');
-      runner = await createLocalOcrRunner(profile.id);
+      if (localProfile) {
+        const { createLocalOcrRunner } = await import('$lib/client/local-ocr-runner');
+        runner = await createLocalOcrRunner(localProfile.id);
+      }
 
       phase = 'reading';
       const sources =
@@ -128,14 +171,37 @@
 
       for (let index = 0; index < sources.length; index += 1) {
         currentPage = index + 1;
-        status = `Reading page ${currentPage} of ${pageCount} on this device…`;
-        const [result] = await runner.predict(sources[index]);
-        const items = orderedItems(result);
-        scores.push(...items.map((item) => item.score));
-        const body = items
-          .map((item) => item.text.trim())
-          .filter(Boolean)
-          .join('\n');
+        status = localProfile
+          ? `Reading page ${currentPage} of ${pageCount} on this device…`
+          : `Reading page ${currentPage} of ${pageCount} with ${provider.name}…`;
+        let body = '';
+        if (runner) {
+          const [result] = await runner.predict(sources[index]);
+          const items = orderedItems(result);
+          scores.push(...items.map((item) => item.score));
+          body = items
+            .map((item) => item.text.trim())
+            .filter(Boolean)
+            .join('\n');
+        } else {
+          const params = new URLSearchParams({ provider: provider.id, capability: 'text' });
+          const response = await fetch(`/api/ocr-recognition?${params}`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': sources[index].type || 'image/jpeg' },
+            body: sources[index]
+          });
+          const result = (await response.json()) as {
+            text?: string;
+            confidence?: number | null;
+            engine?: string;
+            error?: string;
+          };
+          if (!response.ok) throw new Error(result.error || 'Text recognition could not finish.');
+          body = result.text?.trim() ?? '';
+          if (typeof result.confidence === 'number') scores.push(result.confidence);
+          if (result.engine) activeEngine = result.engine;
+        }
         if (body) {
           pageTexts.push(pageCount > 1 ? `Page ${currentPage}\n${body}` : body);
         }
@@ -275,27 +341,34 @@
         <label for={`ocr-profile-${documentId}`}>Reading mode</label>
         <select
           id={`ocr-profile-${documentId}`}
-          value={selectedProfileId}
-          onchange={selectProfile}
+          value={selectedReaderId}
+          onchange={selectReader}
           disabled={busy}
         >
-          {#each browserOcrProfiles as profile}
-            <option value={profile.id}>
-              {profile.label}{profile.recommended ? ' · Recommended' : ''}
+          {#each textProviders as provider}
+            <option value={provider.id}>
+              {provider.name}{provider.id === `browser:${defaultBrowserOcrProfileId}`
+                ? ' · Recommended'
+                : ''}
             </option>
           {/each}
         </select>
-        <p>{selectedProfile.description}</p>
+        <p>{selectedReader.description}</p>
         <div class="ocr-profile-meta" aria-label="Reading mode details">
-          <span><ShieldCheck size={14} /> On this device</span>
-          <span><HardDriveDownload size={14} /> About 36 MB on first use</span>
+          {#if selectedReader.location === 'browser'}
+            <span><ShieldCheck size={14} /> On this device</span>
+            <span><HardDriveDownload size={14} /> About 36 MB on first use</span>
+          {:else}
+            <span><ShieldCheck size={14} /> Administrator approved</span>
+            <span><HardDriveDownload size={14} /> Sent to the connected service</span>
+          {/if}
         </div>
       </div>
 
       {#if phase === 'idle'}
         <div class="local-ocr-start">
           <p>{existingText ? 'Create a fresh text draft?' : 'Ready to read the handwriting.'}</p>
-          <button class="button button-primary" type="button" onclick={readLocally}>
+          <button class="button button-primary" type="button" onclick={readText}>
             {existingText ? 'Read again' : 'Read handwriting'}
           </button>
         </div>
@@ -323,15 +396,15 @@
         >
           <input type="hidden" name="documentId" value={documentId} />
           <input type="hidden" name="confidence" value={confidence} />
-          <input type="hidden" name="engine" value={activeProfile.engine} />
+          <input type="hidden" name="engine" value={activeEngine} />
           <input type="hidden" name="outputKind" value="text" />
           <label for={`local-ocr-${documentId}`}
-            >Review the text from {title}<small>Read with {activeProfile.label}</small></label
+            >Review the text from {title}<small>Read with {activeReaderName}</small></label
           >
           <textarea id={`local-ocr-${documentId}`} name="extractedText" rows="14" bind:value={text}
           ></textarea>
           <div class="form-actions">
-            <button class="button" type="button" onclick={readLocally}>Run again</button>
+            <button class="button" type="button" onclick={readText}>Run again</button>
             <button class="button button-primary" type="submit">
               <Save size={15} /> Save text
             </button>

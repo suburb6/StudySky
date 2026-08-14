@@ -80,19 +80,37 @@ reference LaTeX; it is not “87% accuracy,” a StudySky end-to-end result, or 
 individual student's handwriting. Page detection, capture quality, notation, and hardware all
 affect real results. Always compare the draft with the original.
 
-## Adding another browser model
+## Connecting your own model
 
 StudySky intentionally does not accept arbitrary model URLs in the student interface. Model files
 are executable inference inputs, and accepting an unverified URL would weaken the supply-chain and
 privacy guarantees of the local reader.
 
-A maintainer can add a compatible PaddleOCR ONNX recognition model by adding a curated reading
-profile, pinning the official archive URL, exact byte size, and SHA-256 digest in the server model
-manifest, updating the third-party notices, and running the release checks. The archive must match
-the format required by the pinned PaddleOCR.js version. Formula models are curated in the same
-way at build time; the student selector never accepts arbitrary model URLs. New layout or vision
-pipelines need a separate resource, privacy, licence, and output-review design rather than
-appearing as a drop-in text model.
+An administrator can instead connect a trusted, self-hosted model in **Settings → OCR models**.
+They choose whether it may receive text/handwriting pages, formula pages, or both, test the saved
+connection, and then make it available. Students only see enabled choices. StudySky sends one
+normalised JPEG page at a time through the server, never exposes the service token to the browser,
+limits request pixels and bytes, caps response size, and keeps every result editable.
+
+The service implements this small HTTP contract:
+
+- `GET /health` returns `{"status":"ready","model":"name","capabilities":["text"]}`.
+- `POST /v1/recognise` accepts JSON containing a base64 `image`, `capability` (`text` or
+  `formula_latex`), `mode` (`page` or `formula`), and optional `language`.
+- A text response contains `model`, optional `engine`, `text`, and optional `confidence` from zero
+  to one.
+- A formula response contains `model` and either `text` containing reviewed-ready LaTeX or up to
+  100 `formulas`, each with `latex` and an optional `[x1,y1,x2,y2]` box.
+
+The endpoint may be another Compose service, a computer on a private network, or a remote service
+the operator has deliberately approved. The operator is responsible for its model licence,
+authentication, retention, and privacy. A bearer token is optional; when used, StudySky encrypts
+it with `SETTINGS_ENCRYPTION_KEY`. Because local endpoints are a supported self-hosting use case,
+only trusted administrators should be allowed to configure providers.
+
+Maintainers can still add a built-in PaddleOCR.js model by creating a curated reading profile,
+pinning its official archive URL, byte size, and SHA-256 digest, updating third-party notices, and
+running the release checks. The archive must match the pinned PaddleOCR.js runtime.
 
 ## Searchable-PDF OCR worker
 

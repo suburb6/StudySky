@@ -6,10 +6,15 @@
     HardDrive,
     LockKeyhole,
     Palette,
+    Pencil,
     Plus,
     Save,
+    ScanText,
+    Server,
+    Trash2,
     Users
   } from '@lucide/svelte';
+  import Modal from '$lib/components/Modal.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Toast from '$lib/components/Toast.svelte';
   import ThemePicker from '$lib/components/ThemePicker.svelte';
@@ -29,6 +34,13 @@
       Math.round((data.account.storageUsedBytes / data.account.storageQuotaBytes) * 100)
     )
   );
+  let providerOpen = $state(false);
+  let selectedProvider = $state<(typeof data.ocrProviders)[number] | null>(null);
+
+  function openProvider(provider: (typeof data.ocrProviders)[number] | null = null) {
+    selectedProvider = provider;
+    providerOpen = true;
+  }
 </script>
 
 <svelte:head>
@@ -64,6 +76,7 @@
     <a href="#notifications">Notifications</a>
     <a href="#storage">Storage</a>
     {#if data.account.role === 'admin'}<a href="#ai">AI</a>{/if}
+    {#if data.account.role === 'admin'}<a href="#ocr-models">OCR models</a>{/if}
     <a href="#grading">Grading</a>
     {#if data.account.role === 'admin'}<a href="#members">Members</a>{/if}
   </nav>
@@ -461,6 +474,82 @@
     </section>
   {/if}
 
+  {#if data.account.role === 'admin'}
+    <section id="ocr-models" class="settings-section">
+      <div class="section-label row-between">
+        <div class="section-title">
+          <ScanText size={18} />
+          <div>
+            <h2>OCR models</h2>
+            <p>Approve self-hosted models that students may use for their notes.</p>
+          </div>
+        </div>
+        <button class="button" type="button" onclick={() => openProvider()}>
+          <Plus size={15} /> Add model
+        </button>
+      </div>
+      <div class="surface provider-panel">
+        <div class="provider-row built-in-row">
+          <span class="provider-icon"><ScanText size={16} /></span>
+          <div class="provider-copy">
+            <strong>StudySky browser OCR</strong>
+            <small>PP-OCRv5 English and Latin · always local to each student’s browser</small>
+          </div>
+          <span class="status-pill enabled">Built in</span>
+        </div>
+        <div class="provider-row built-in-row">
+          <span class="provider-icon"><Server size={16} /></span>
+          <div class="provider-copy">
+            <strong>StudySky formula service</strong>
+            <small>Optional PP-FormulaNet service managed through the server environment</small>
+          </div>
+          <span class="status-pill">Compose</span>
+        </div>
+        {#each data.ocrProviders as provider}
+          <div class="provider-row">
+            <span class="provider-icon"><Server size={16} /></span>
+            <div class="provider-copy">
+              <strong>{provider.name}</strong>
+              <small>
+                {provider.capabilities
+                  .map((capability) =>
+                    capability === 'formula_latex' ? 'Formula to LaTeX' : 'Text'
+                  )
+                  .join(' · ')}
+                {provider.languages.length ? ` · ${provider.languages.join(', ')}` : ''}
+              </small>
+            </div>
+            <span class:enabled={provider.enabled} class="status-pill">
+              {provider.enabled ? 'Available' : 'Disabled'}
+            </span>
+            <form method="POST" action="?/testOcrProvider">
+              <input type="hidden" name="id" value={provider.id} />
+              <button class="button button-small" type="submit">Test</button>
+            </form>
+            <button
+              class="button button-icon button-quiet"
+              type="button"
+              aria-label={`Edit ${provider.name}`}
+              title={`Edit ${provider.name}`}
+              onclick={() => openProvider(provider)}
+            >
+              <Pencil size={15} />
+            </button>
+          </div>
+        {/each}
+        {#if data.ocrProviders.length === 0}
+          <div class="provider-empty">
+            <p>No extra models connected.</p>
+            <span class="subtle">Built-in browser OCR continues to work without one.</span>
+          </div>
+        {/if}
+      </div>
+      {#if form?.action === 'testOcrProvider' && form?.testMessage}
+        <p class="subtle provider-test" role="status">{form.testMessage}</p>
+      {/if}
+    </section>
+  {/if}
+
   <section id="grading" class="settings-section">
     <div class="section-label">
       <Database size={18} />
@@ -596,6 +685,142 @@
   {/if}
 </div>
 
+{#if data.account.role === 'admin'}
+  <Modal
+    bind:open={providerOpen}
+    title={selectedProvider ? 'Edit OCR model' : 'Add OCR model'}
+    description="Connect a service that follows the StudySky OCR Provider API."
+    size="medium"
+  >
+    <form method="POST" action="?/saveOcrProvider" class="provider-form">
+      {#if selectedProvider}<input type="hidden" name="id" value={selectedProvider.id} />{/if}
+      <div class="form-grid">
+        <div class="field">
+          <label for="ocr-provider-name">Name</label>
+          <input
+            id="ocr-provider-name"
+            name="name"
+            value={selectedProvider?.name ?? ''}
+            placeholder="My handwriting model"
+            required
+          />
+        </div>
+        <div class="field">
+          <label for="ocr-provider-url">Service URL</label>
+          <input
+            id="ocr-provider-url"
+            name="baseUrl"
+            type="url"
+            value={selectedProvider?.baseUrl ?? ''}
+            placeholder="http://ocr-model:8080"
+            required
+          />
+        </div>
+        <fieldset class="field form-span capability-fieldset">
+          <legend>What may this model read?</legend>
+          <div>
+            <label>
+              <input
+                type="checkbox"
+                name="capability_text"
+                checked={!selectedProvider || selectedProvider.capabilities.includes('text')}
+              />
+              Text and handwriting
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="capability_formula_latex"
+                checked={selectedProvider?.capabilities.includes('formula_latex') ?? false}
+              />
+              Formula to LaTeX
+            </label>
+          </div>
+        </fieldset>
+        <div class="field form-span">
+          <label for="ocr-provider-languages">Languages</label>
+          <input
+            id="ocr-provider-languages"
+            name="languages"
+            value={selectedProvider?.languages.join(', ') ?? 'English'}
+            placeholder="English, French"
+          />
+          <span class="subtle">Comma-separated. Leave empty for formula-only models.</span>
+        </div>
+        <div class="field form-span">
+          <label for="ocr-provider-token">Bearer token</label>
+          <input
+            id="ocr-provider-token"
+            name="token"
+            type="password"
+            autocomplete="new-password"
+            placeholder={selectedProvider?.hasToken
+              ? 'Saved securely · enter to replace'
+              : 'Optional'}
+          />
+        </div>
+        <div class="field">
+          <label for="ocr-provider-timeout">Timeout (ms)</label>
+          <input
+            id="ocr-provider-timeout"
+            name="timeoutMs"
+            type="number"
+            min="5000"
+            max="180000"
+            value={selectedProvider?.timeoutMs ?? 90000}
+            required
+          />
+        </div>
+        <div class="field">
+          <label for="ocr-provider-size">Maximum image (MB)</label>
+          <input
+            id="ocr-provider-size"
+            name="maxImageMb"
+            type="number"
+            min="1"
+            max="12"
+            value={selectedProvider?.maxImageMb ?? 6}
+            required
+          />
+        </div>
+        <input type="hidden" name="maxPixels" value={selectedProvider?.maxPixels ?? 16000000} />
+        <label class="check-row form-span">
+          <input type="checkbox" name="enabled" checked={selectedProvider?.enabled ?? false} />
+          <span>
+            <strong>Make available to students</strong>
+            <small>Test the saved connection before enabling it.</small>
+          </span>
+        </label>
+        {#if selectedProvider?.hasToken}
+          <label class="check-row form-span">
+            <input type="checkbox" name="removeToken" />
+            <span><strong>Remove saved token</strong></span>
+          </label>
+        {/if}
+      </div>
+      <div class="form-actions provider-form-actions">
+        {#if selectedProvider}
+          <button
+            class="button danger-button"
+            type="submit"
+            formaction="?/deleteOcrProvider"
+            onclick={(event) => {
+              if (!window.confirm(`Remove ${selectedProvider?.name}?`)) event.preventDefault();
+            }}
+          >
+            <Trash2 size={15} /> Remove
+          </button>
+        {/if}
+        <span></span>
+        <button class="button" type="button" onclick={() => (providerOpen = false)}>Cancel</button>
+        <button class="button button-primary" type="submit">
+          <Save size={15} /> Save model
+        </button>
+      </div>
+    </form>
+  </Modal>
+{/if}
+
 <style>
   .settings-nav {
     position: sticky;
@@ -657,6 +882,117 @@
     display: flex;
     align-items: flex-start;
     gap: 10px;
+  }
+
+  .section-title {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .provider-panel {
+    overflow: hidden;
+  }
+
+  .provider-row {
+    display: flex;
+    min-height: 62px;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .provider-row:last-child {
+    border-bottom: 0;
+  }
+
+  .built-in-row {
+    background: color-mix(in srgb, var(--surface-muted) 55%, transparent);
+  }
+
+  .provider-icon {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 6px;
+    background: var(--surface-hover);
+  }
+
+  .provider-copy {
+    display: grid;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .provider-copy small {
+    overflow: hidden;
+    color: var(--text-soft);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .status-pill {
+    padding: 3px 7px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-soft);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .status-pill.enabled {
+    border-color: color-mix(in srgb, #27844b 30%, var(--border));
+    color: #27844b;
+    background: color-mix(in srgb, #27844b 8%, transparent);
+  }
+
+  .provider-empty {
+    padding: 18px 12px;
+    text-align: center;
+  }
+
+  .provider-empty p,
+  .provider-test {
+    margin: 0;
+  }
+
+  .provider-test {
+    padding-left: 2px;
+  }
+
+  .provider-form {
+    display: grid;
+    gap: 18px;
+  }
+
+  .capability-fieldset {
+    padding: 0;
+    border: 0;
+  }
+
+  .capability-fieldset > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding-top: 7px;
+  }
+
+  .capability-fieldset label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .provider-form-actions {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+  }
+
+  .danger-button {
+    color: var(--danger, #b42318);
   }
 
   .section-label h2,
@@ -815,6 +1151,23 @@
 
     .quota-form input {
       flex: 1;
+    }
+
+    .provider-row {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .provider-copy {
+      width: calc(100% - 42px);
+    }
+
+    .provider-form-actions {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .provider-form-actions span {
+      display: none;
     }
   }
 </style>
