@@ -11,12 +11,19 @@ import { hashPassword, normalizeEmail, verifyPassword } from '$lib/server/auth';
 import { gradingPresetValues } from '$lib/domain/grading';
 import { canonicalTimeZone, isValidTimeZone } from '$lib/domain/time';
 import { defaultStorageQuotaBytes } from '$lib/server/config';
+import {
+  normaliseOcrProviderUrl,
+  parseOcrCapabilities,
+  parseOcrLanguages,
+  testCustomOcrProvider
+} from '$lib/server/custom-ocr-provider';
 import { getDatabase } from '$lib/server/db';
 import {
   aiSettings,
   auditLogs,
   documentAssets,
   modules,
+  ocrProviders,
   sessions,
   users
 } from '$lib/server/db/schema';
@@ -61,6 +68,18 @@ const gradingSchema = z.object({
   formulaNotes: z.string().max(5_000)
 });
 
+const ocrProviderSchema = z.object({
+  id: z.uuid().nullable(),
+  name: z.string().min(2).max(120),
+  baseUrl: z.string().min(1).max(500),
+  capabilities: z.array(z.enum(['text', 'formula_latex'])).min(1),
+  languages: z.array(z.string().min(1).max(40)).max(20),
+  enabled: z.boolean(),
+  timeoutMs: z.number().int().min(5_000).max(180_000),
+  maxImageMb: z.number().int().min(1).max(12),
+  maxPixels: z.number().int().min(1_000_000).max(40_000_000)
+});
+
 export const load: PageServerLoad = async ({ locals }) => {
   const db = getDatabase();
   const userId = locals.user!.id;
@@ -92,7 +111,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     .limit(1);
   if (!account) throw new Error('Account not found.');
 
-  const [ai, actualUsage, moduleRows, memberRows] = await Promise.all([
+  const [ai, actualUsage, moduleRows, memberRows, ocrProviderRows] = await Promise.all([
     db.select().from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1),
     db
       .select({ bytes: sql<number>`coalesce(sum(${documentAssets.byteSize}), 0)` })
@@ -116,6 +135,9 @@ export const load: PageServerLoad = async ({ locals }) => {
           })
           .from(users)
           .orderBy(asc(users.email))
+      : Promise.resolve([]),
+    account.role === 'admin'
+      ? db.select().from(ocrProviders).orderBy(asc(ocrProviders.name))
       : Promise.resolve([])
   ]);
   const aiValue = ai[0];
@@ -123,6 +145,18 @@ export const load: PageServerLoad = async ({ locals }) => {
     account: { ...account, storageUsedBytes: Number(actualUsage[0]?.bytes ?? 0) },
     modules: moduleRows,
     members: memberRows,
+    ocrProviders: ocrProviderRows.map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      baseUrl: provider.baseUrl,
+      capabilities: parseOcrCapabilities(provider.capabilities),
+      languages: parseOcrLanguages(provider.languages),
+      enabled: provider.enabled,
+      timeoutMs: provider.timeoutMs,
+      maxImageMb: Math.round(provider.maxImageBytes / 1024 / 1024),
+      maxPixels: provider.maxPixels,
+      hasToken: Boolean(provider.encryptedToken)
+    })),
     ai: aiValue
       ? {
           provider: aiValue.provider,
@@ -336,6 +370,176 @@ export const actions: Actions = {
         error: error instanceof Error ? error.message : 'Connection test failed.'
       });
     }
+  },
+
+  saveOcrProvider: async ({ request, locals }) => {
+    if (locals.user!.role !== 'admin') {
+      return fail(403, {
+        action: 'saveOcrProvider',
+        error: 'Administrator access required.'
+      });
+    }
+    const form = await request.formData();
+    const languages = formString(form, 'languages')
+      .split(',')
+      .map((language) => language.trim())
+      .filter(Boolean);
+    const parsed = ocrProviderSchema.safeParse({
+      id: optionalFormString(form, 'id'),
+      name: formString(form, 'name'),
+      baseUrl: formString(form, 'baseUrl'),
+      capabilities: ['text', 'formula_latex'].filter((value) => form.has(`capability_${value}`)),
+      languages,
+      enabled: form.has('enabled'),
+      timeoutMs: formInteger(form, 'timeoutMs', 90_000),
+      maxImageMb: formInteger(form, 'maxImageMb', 6),
+      maxPixels: formInteger(form, 'maxPixels', 16_000_000)
+    });
+    if (!parsed.success) {
+      return fail(400, { action: 'saveOcrProvider', error: issueMessage(parsed.error) });
+    }
+    let baseUrl: string;
+    try {
+      baseUrl = normaliseOcrProviderUrl(parsed.data.baseUrl);
+    } catch (error) {
+      return fail(400, {
+        action: 'saveOcrProvider',
+        error: error instanceof Error ? error.message : 'Enter a valid provider URL.'
+      });
+    }
+
+    const db = getDatabase();
+    const existing = parsed.data.id
+      ? await db
+          .select({ encryptedToken: ocrProviders.encryptedToken })
+          .from(ocrProviders)
+          .where(eq(ocrProviders.id, parsed.data.id))
+          .limit(1)
+      : [];
+    if (parsed.data.id && !existing[0]) {
+      return fail(404, { action: 'saveOcrProvider', error: 'OCR model not found.' });
+    }
+    const token = optionalFormString(form, 'token');
+    let encryptedToken = form.has('removeToken') ? null : (existing[0]?.encryptedToken ?? null);
+    if (token) {
+      try {
+        encryptedToken = encryptCredential(token);
+      } catch (error) {
+        return fail(400, {
+          action: 'saveOcrProvider',
+          error: error instanceof Error ? error.message : 'Could not encrypt provider token.'
+        });
+      }
+    }
+    const values = {
+      name: parsed.data.name,
+      baseUrl,
+      capabilities: parsed.data.capabilities,
+      languages: parsed.data.languages,
+      enabled: parsed.data.enabled,
+      timeoutMs: parsed.data.timeoutMs,
+      maxImageBytes: parsed.data.maxImageMb * 1024 * 1024,
+      maxPixels: parsed.data.maxPixels,
+      encryptedToken,
+      updatedAt: new Date()
+    };
+    let providerId = parsed.data.id;
+    await db.transaction(async (tx) => {
+      if (providerId) {
+        await tx.update(ocrProviders).set(values).where(eq(ocrProviders.id, providerId));
+      } else {
+        const [created] = await tx
+          .insert(ocrProviders)
+          .values({ ...values, createdByUserId: locals.user!.id })
+          .returning({ id: ocrProviders.id });
+        providerId = created.id;
+      }
+      await tx.insert(auditLogs).values({
+        actorUserId: locals.user!.id,
+        action: parsed.data.id ? 'ocr_provider.updated' : 'ocr_provider.created',
+        entityType: 'ocr_provider',
+        entityId: providerId,
+        detail: { name: parsed.data.name, capabilities: parsed.data.capabilities }
+      });
+    });
+    return { action: 'saveOcrProvider', success: true };
+  },
+
+  testOcrProvider: async ({ request, locals }) => {
+    if (locals.user!.role !== 'admin') {
+      return fail(403, {
+        action: 'testOcrProvider',
+        error: 'Administrator access required.'
+      });
+    }
+    const form = await request.formData();
+    const id = z.uuid().safeParse(formString(form, 'id'));
+    if (!id.success) {
+      return fail(400, { action: 'testOcrProvider', error: 'OCR model not found.' });
+    }
+    const [provider] = await getDatabase()
+      .select()
+      .from(ocrProviders)
+      .where(eq(ocrProviders.id, id.data))
+      .limit(1);
+    if (!provider) {
+      return fail(404, { action: 'testOcrProvider', error: 'OCR model not found.' });
+    }
+    try {
+      const result = await testCustomOcrProvider({
+        id: provider.id,
+        name: provider.name,
+        baseUrl: provider.baseUrl,
+        token: decryptCredential(provider.encryptedToken),
+        capabilities: parseOcrCapabilities(provider.capabilities),
+        languages: parseOcrLanguages(provider.languages),
+        timeoutMs: provider.timeoutMs,
+        maxImageBytes: provider.maxImageBytes,
+        maxPixels: provider.maxPixels
+      });
+      if (!result.ok) {
+        return fail(400, {
+          action: 'testOcrProvider',
+          error: result.message,
+          providerId: provider.id
+        });
+      }
+      return {
+        action: 'testOcrProvider',
+        success: true,
+        testMessage: result.message,
+        providerId: provider.id
+      };
+    } catch (error) {
+      return fail(400, {
+        action: 'testOcrProvider',
+        error: error instanceof Error ? error.message : 'Connection test failed.'
+      });
+    }
+  },
+
+  deleteOcrProvider: async ({ request, locals }) => {
+    if (locals.user!.role !== 'admin') {
+      return fail(403, {
+        action: 'deleteOcrProvider',
+        error: 'Administrator access required.'
+      });
+    }
+    const form = await request.formData();
+    const id = z.uuid().safeParse(formString(form, 'id'));
+    if (!id.success) {
+      return fail(400, { action: 'deleteOcrProvider', error: 'OCR model not found.' });
+    }
+    await getDatabase().transaction(async (tx) => {
+      await tx.delete(ocrProviders).where(eq(ocrProviders.id, id.data));
+      await tx.insert(auditLogs).values({
+        actorUserId: locals.user!.id,
+        action: 'ocr_provider.deleted',
+        entityType: 'ocr_provider',
+        entityId: id.data
+      });
+    });
+    return { action: 'deleteOcrProvider', success: true };
   },
 
   grading: async ({ request, locals }) => {

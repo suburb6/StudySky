@@ -22,6 +22,10 @@ analytics, advertising, tracking pixel, or telemetry endpoint.
 - If the operator enables formula-to-LaTeX, the selected image or PDF page travels only from the
   browser to the StudySky web service and its private formula container. The container performs
   local inference, returns LaTeX, and does not persist the request image.
+- If an administrator enables a custom OCR model, one prepared page is sent through the StudySky
+  server to that configured service. Students see that the selected model is server-connected;
+  its URL and encrypted bearer token remain administrator-only. The operator must disclose and
+  assess that service's storage, logging, and network behaviour.
 - Push notifications use an approved public browser push service only when the operator configures
   VAPID and a user opts in. Subscriptions are bound to the login session and stop on session
   revocation.

@@ -15,6 +15,7 @@ no public StudySky registration service.
 - Private document uploads with tenant isolation, quotas, checksums, and backups
 - Browser-based PaddleOCR/ONNX recognition with simple English or Latin-language reading modes
 - Optional self-hosted formula-to-LaTeX for printed and handwritten mathematics
+- Administrator-approved custom OCR providers for student-owned text or formula models
 - Optional OCRmyPDF/Tesseract worker for searchable PDFs
 - Administrator-created member accounts; no open registration
 - Per-account IANA timezones and generic weighted grading by default

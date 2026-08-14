@@ -716,6 +716,28 @@ export const aiSettings = pgTable('ai_settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });
 
+export const ocrProviders = pgTable(
+  'ocr_providers',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: varchar('name', { length: 120 }).notNull(),
+    baseUrl: varchar('base_url', { length: 500 }).notNull(),
+    encryptedToken: text('encrypted_token'),
+    capabilities: jsonb('capabilities').$type<string[]>().notNull().default([]),
+    languages: jsonb('languages').$type<string[]>().notNull().default([]),
+    enabled: boolean('enabled').notNull().default(false),
+    timeoutMs: integer('timeout_ms').notNull().default(90000),
+    maxImageBytes: integer('max_image_bytes').notNull().default(6291456),
+    maxPixels: integer('max_pixels').notNull().default(16000000),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null'
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index('ocr_providers_enabled_idx').on(table.enabled)]
+);
+
 export const notifications = pgTable(
   'notifications',
   {
