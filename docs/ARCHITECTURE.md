@@ -14,8 +14,9 @@ variants.
 - **Upload volume:** originals, derived assets, and the private browser-OCR model cache.
 - **Browser:** PWA shell, offline queue, scanner preprocessing, PDF viewing on demand, and local
   PaddleOCR/ONNX inference.
-- **Formula service (optional):** private, token-authenticated Paddle formula/layout inference with
-  no public port and serialised requests.
+- **Formula/custom OCR services (optional):** token-authenticated formula/layout or text inference
+  services configured by an administrator. The built-in formula service has no public port and
+  serialises requests; custom services receive only a normalised page through the web boundary.
 
 The web and worker run as an unprivileged user with a read-only root filesystem. PostgreSQL and
 uploads use separate named volumes. Caddy or another trusted reverse proxy terminates HTTPS.
@@ -47,8 +48,10 @@ Browser OCR downloads integrity-pinned Paddle model artifacts from an authentica
 endpoint and performs inference in a worker on the client. Searchable-PDF OCR is optional and runs
 OCRmyPDF/Tesseract in the self-hosted background worker. Formula-to-LaTeX is optional and sends a
 normalised page through an authenticated server route to PP-FormulaNet-S and PP-DocLayout-M on the
-private Compose network. The formula container keeps no application database or upload volume.
-None of these paths requires a third-party OCR API.
+private Compose network. An administrator can add a compatible HTTP OCR provider for text or
+formula output; the provider registry stores only its encrypted token and bounded connection
+settings, and exposes only enabled capability metadata to students. None of these paths requires
+a commercial OCR API.
 
 ## Release supply chain
 

@@ -1,7 +1,7 @@
 # StudySky
 
-StudySky is a private, self-hosted workspace for students: modules, a weekly timetable, tasks,
-revision, study documents, progress, and optional local OCR in one focused interface.
+StudySky is a privacy-first, self-hosted workspace for students: modules, a weekly timetable,
+tasks, revision, study documents, progress, and optional local OCR in one focused interface.
 
 Every installation is independent. Running StudySky on your computer or VPS creates your own
 database, accounts, and file storage. It does not connect to the maintainer's server, and there is
@@ -90,7 +90,9 @@ StudySky stores application data in PostgreSQL and originals in a Docker volume.
 analytics or telemetry. Browser OCR runs recognition on the signed-in device after the server has
 cached integrity-pinned model files; the note image is not sent to a third-party OCR API. Optional
 formula recognition sends only the selected page to a private container inside the operator's own
-installation. Optional AI providers are disabled until an administrator configures one.
+installation. Administrators may also connect a compatible OCR service from Settings; students see
+that a model is server-connected, while its URL and encrypted token remain administrator-only.
+Optional AI providers are disabled until an administrator configures one.
 
 Self-hosting still requires operational care: use HTTPS, keep releases current, restrict server
 access, test backups, and protect the host. See [SECURITY.md](SECURITY.md) for private reporting.
