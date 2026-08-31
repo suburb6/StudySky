@@ -4,6 +4,11 @@ All notable changes are documented here. StudySky follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- Clarified the privacy-first public-release wording and the administrator-approved OCR provider
+  boundary in the README and architecture guide.
+
 ## [0.2.0] - 2026-08-10
 
 ### Added
