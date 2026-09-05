@@ -4,12 +4,21 @@
   import EmptyState from '$lib/components/EmptyState.svelte';
   import FocusTimer from '$lib/components/FocusTimer.svelte';
   import Modal from '$lib/components/Modal.svelte';
+  import TaskEditor from '$lib/components/TaskEditor.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Toast from '$lib/components/Toast.svelte';
   import { taskStatusLabels, taskTypeLabels } from '$lib/domain/labels';
 
   let { data, form } = $props();
   let createOpen = $state(false);
+  let editOpen = $state(false);
+  let editingTask = $state<typeof data.selectedTask | null>(null);
+  $effect(() => {
+    if (data.selectedTask) {
+      editingTask = data.selectedTask;
+      editOpen = true;
+    }
+  });
   let taskModuleId = $state('');
   const views = [
     ['all', 'All'],
@@ -35,7 +44,14 @@
 </svelte:head>
 
 <div class="page">
-  <PageHeader title="Tasks" description="The concrete work you need to finish.">
+  <PageHeader
+    title="Tasks"
+    description="The concrete work you need to finish."
+    backHref={page.url.searchParams.has('search')
+      ? `/search?${page.url.searchParams.get('search')}`
+      : undefined}
+    backLabel="Search results"
+  >
     {#snippet actions()}
       <button class="button button-primary" type="button" onclick={() => (createOpen = true)}>
         <Plus size={16} /> Add task
@@ -118,7 +134,15 @@
             <span class="module-dot" style={`--module-color: ${row.moduleColor}`}></span>
           {/if}
           <div class="task-main">
-            <h2 class:done={row.task.status === 'done'}>{row.task.title}</h2>
+            <h2 class:done={row.task.status === 'done'}>
+              <button
+                class="task-title-button"
+                onclick={() => {
+                  editingTask = row.task;
+                  editOpen = true;
+                }}>{row.task.title}</button
+              >
+            </h2>
             <p>
               {taskTypeLabels[row.task.type]}
               {#if row.moduleCode}
@@ -277,7 +301,20 @@
   </Modal>
 </div>
 
+<TaskEditor bind:open={editOpen} task={editingTask} timezone={data.user.timezone} />
+
 <style>
+  .task-title-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+  }
+  .task-title-button:hover {
+    text-decoration: underline;
+  }
   .view-tabs {
     display: flex;
     overflow-x: auto;

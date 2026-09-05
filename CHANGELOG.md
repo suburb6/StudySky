@@ -4,6 +4,12 @@ All notable changes are documented here. StudySky follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Due and overdue tasks on Today, with completion and shared task editing without leaving the page.
+- Search results open the matching task editor and retain a link back to the search and filters.
+- Library actions to read, correct, copy, and download saved OCR text and LaTeX without rerunning recognition.
+
 ### Changed
 
 - Clarified the privacy-first public-release wording and the administrator-approved OCR provider

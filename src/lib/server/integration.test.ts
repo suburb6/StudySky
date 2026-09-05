@@ -180,6 +180,66 @@ integration('PostgreSQL integration and permission boundaries', () => {
     expect(Array.isArray(taskRows)).toBe(true);
   });
 
+  it('includes overdue and scheduled work but excludes completed, future and other-account tasks', async () => {
+    const start = new Date('2030-01-02T00:00:00Z');
+    const end = new Date('2030-01-03T00:00:00Z');
+    const rows = await getDatabase()
+      .insert(tasks)
+      .values([
+        { userId: userA.id, title: 'Overdue work', deadline: new Date('2030-01-01T10:00:00Z') },
+        { userId: userA.id, title: 'Scheduled work', scheduledStart: start },
+        { userId: userA.id, title: 'Due at day end', deadline: new Date('2030-01-02T23:59:59Z') },
+        { userId: userA.id, title: 'Tomorrow', deadline: end },
+        { userId: userA.id, title: 'Completed work', deadline: start, status: 'done' },
+        { userId: userB.id, title: 'Private work', deadline: start }
+      ])
+      .returning();
+    const overview = await todayOverview(userA.id, start, end);
+    const fixtureIds = new Set(rows.map((row) => row.id));
+    expect(
+      overview.scheduled
+        .filter((row) => fixtureIds.has(row.task.id))
+        .map((row) => row.task.title)
+        .sort()
+    ).toEqual(['Due at day end', 'Overdue work', 'Scheduled work']);
+  });
+
+  it('edits task dates in the account timezone and preserves ownership', async () => {
+    const [task] = await getDatabase()
+      .insert(tasks)
+      .values({ userId: userA.id, title: 'Editable task' })
+      .returning();
+    const edit = taskActions.edit as unknown as (event: {
+      request: Request;
+      locals: { user: typeof userA };
+    }) => Promise<{ status?: number; success?: boolean }>;
+    async function submit(user: typeof userA, deadline: string) {
+      const body = new FormData();
+      body.set('taskId', task.id);
+      body.set('title', 'Reviewed task');
+      body.set('estimatedMinutes', '45');
+      body.set('deadline', deadline);
+      body.set('scheduledStart', '2030-01-02T09:00');
+      return edit({
+        request: new Request('http://localhost/tasks?/edit', { method: 'POST', body }),
+        locals: { user }
+      });
+    }
+    expect((await submit(userB, '2030-01-02T12:00')).status).toBe(404);
+    expect((await submit(userA, 'not-a-date')).status).toBe(400);
+    expect((await submit({ ...userA, timezone: 'Asia/Kolkata' }, '2030-01-02T12:00')).success).toBe(
+      true
+    );
+    const [updated] = await getDatabase().select().from(tasks).where(eq(tasks.id, task.id));
+    expect(updated.userId).toBe(userA.id);
+    expect(updated.deadline?.toISOString()).toBe('2030-01-02T06:30:00.000Z');
+    expect(updated.scheduledStart?.toISOString()).toBe('2030-01-02T03:30:00.000Z');
+    expect(updated.scheduledEnd?.toISOString()).toBe('2030-01-02T04:15:00.000Z');
+    expect((await submit(userA, '')).success).toBe(true);
+    const [cleared] = await getDatabase().select().from(tasks).where(eq(tasks.id, task.id));
+    expect(cleared.deadline).toBeNull();
+  });
+
   it('rejects a queued upload when the signed-in account has changed', async () => {
     const before = await getDatabase()
       .select({ id: documents.id })
