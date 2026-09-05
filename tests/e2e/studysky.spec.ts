@@ -104,6 +104,38 @@ test('creates a module and task through real forms', async ({ page }) => {
   ).toBeVisible();
 });
 
+test('edits a search result, reschedules overdue work and completes it from Today', async ({
+  page
+}) => {
+  await signIn(page);
+  const title = `Daily workflow ${Date.now()}`;
+  await page.goto('/tasks?new=1');
+  const create = page.getByRole('dialog', { name: 'Add task' });
+  await create.getByLabel('Title', { exact: true }).fill(title);
+  await create.getByRole('button', { name: 'Add task' }).click();
+  await expect(create).toBeHidden();
+  await page.goto(`/search?q=${encodeURIComponent(title)}`);
+  await page.locator('.result-row').filter({ hasText: title }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit task' });
+  await expect(edit.getByLabel('Title', { exact: true })).toHaveValue(title);
+  await edit.getByLabel('Deadline', { exact: true }).fill('2020-01-01T12:00');
+  await edit.getByRole('button', { name: 'Save task' }).click();
+  await expect(edit).toBeHidden();
+  await page.getByRole('link', { name: 'Search results' }).click();
+  await expect(page.getByLabel('Search StudySky')).toHaveValue(title);
+  await page.goto('/today');
+  await expect(page.getByRole('button', { name: new RegExp(`^${title}`) })).toContainText(
+    'Overdue'
+  );
+  await page.getByRole('button', { name: new RegExp(`^${title}`) }).click();
+  await edit.getByLabel('Study time').fill('2020-01-01T09:00');
+  await edit.getByRole('button', { name: 'Save task' }).click();
+  await expect(edit).toBeHidden();
+  await expect(page).toHaveURL(/\/today$/);
+  await page.getByRole('button', { name: `Complete ${title}`, exact: true }).click();
+  await expect(page.getByRole('button', { name: `Complete ${title}`, exact: true })).toHaveCount(0);
+});
+
 test('keeps every main route aligned and offers a Monday-first themed timetable', async ({
   page
 }) => {
@@ -199,6 +231,39 @@ test('uploads a scanned image and never reports a false client success', async (
   await expect(page).toHaveURL(/\/documents\?uploaded=1$/);
   await expect(page.getByText(/scan-/).first()).toBeVisible();
   await expect(page.locator('.preview-section')).toHaveCount(0);
+  const documentRow = page.locator('.document-row').filter({ hasText: /scan-/ }).first();
+  const originalUrl = await documentRow.locator('.document-title').getAttribute('href');
+  const documentId = originalUrl!.split('/')[3];
+  // Persist a synthetic recognition result; this tests editing, not model accuracy.
+  const saved = await page.request.post('/documents?/saveLocalOcr', {
+    form: {
+      documentId,
+      extractedText: 'Synthetic notes: \\[x^2\\]',
+      engine: 'e2e-fixture',
+      outputKind: 'formula_latex'
+    }
+  });
+  expect(saved.ok()).toBe(true);
+  await page.reload();
+  await documentRow.getByLabel(/^Actions for/).click();
+  await documentRow.getByRole('button', { name: 'Read / edit text' }).click();
+  const textDialog = page.getByRole('dialog', { name: /^Text ·/ });
+  await expect(textDialog.getByLabel('Saved text and LaTeX')).toHaveValue(
+    'Synthetic notes: \\[x^2\\]'
+  );
+  await textDialog.getByLabel('Saved text and LaTeX').fill('Reviewed notes: \\[x^3\\]');
+  await textDialog.getByRole('button', { name: 'Save text', exact: true }).click();
+  await expect(textDialog).toBeHidden();
+  await page.reload();
+  await documentRow.getByLabel(/^Actions for/).click();
+  await documentRow.getByRole('button', { name: 'Read / edit text' }).click();
+  await expect(textDialog.getByLabel('Saved text and LaTeX')).toHaveValue(
+    'Reviewed notes: \\[x^3\\]'
+  );
+  const downloadPromise = page.waitForEvent('download');
+  await textDialog.getByRole('button', { name: 'Download text' }).click();
+  expect((await downloadPromise).suggestedFilename()).toBe('studysky-notes.txt');
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Upload', exact: true })).toHaveCount(1);
   await page.getByRole('button', { name: 'Upload', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Upload files' })).toBeVisible();

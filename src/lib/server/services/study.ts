@@ -436,7 +436,7 @@ export async function todayOverview(userId: string, start: Date, end: Date) {
           inArray(tasks.status, unfinishedTaskStatuses),
           or(
             and(gte(tasks.scheduledStart, start), lt(tasks.scheduledStart, end)),
-            and(gte(tasks.deadline, start), lt(tasks.deadline, end))
+            lt(tasks.deadline, end)
           )
         )
       )

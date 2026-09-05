@@ -77,6 +77,14 @@ const taskSchema = z
 export const load: PageServerLoad = async ({ locals, url }) => {
   const view = url.searchParams.get('view') ?? 'all';
   const db = getDatabase();
+  const selectedId = z.uuid().safeParse(url.searchParams.get('task'));
+  const [selectedTask] = selectedId.success
+    ? await db
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.id, selectedId.data), eq(tasks.userId, locals.user!.id)))
+        .limit(1)
+    : [];
   const [taskRows, moduleRows, chapterRows, documentRows, taskOptions] = await Promise.all([
     listTasks(locals.user!.id, view, locals.user!.timezone),
     listModules(locals.user!.id),
@@ -115,6 +123,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
         .orderBy(checklistItems.position)
     : [];
   return {
+    selectedTask: selectedTask ?? null,
     tasks: taskRows,
     modules: moduleRows,
     chapters: chapterRows,
@@ -126,6 +135,48 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 };
 
 export const actions: Actions = {
+  edit: async ({ request, locals }) => {
+    const form = await request.formData();
+    const deadlineValue = formString(form, 'deadline');
+    const startValue = formString(form, 'scheduledStart');
+    const deadline = deadlineValue
+      ? parseZonedDateTime(deadlineValue, locals.user!.timezone)
+      : null;
+    const scheduledStart = startValue
+      ? parseZonedDateTime(startValue, locals.user!.timezone)
+      : null;
+    if ((deadlineValue && !deadline) || (startValue && !scheduledStart)) {
+      return fail(400, { action: 'edit', error: 'Enter a valid local date and time.' });
+    }
+    const parsed = z
+      .object({
+        taskId: z.uuid(),
+        title: z.string().min(2).max(300),
+        estimatedMinutes: z.number().int().min(5).max(720)
+      })
+      .safeParse({
+        taskId: formString(form, 'taskId'),
+        title: formString(form, 'title'),
+        estimatedMinutes: formInteger(form, 'estimatedMinutes')
+      });
+    if (!parsed.success) return fail(400, { action: 'edit', error: issueMessage(parsed.error) });
+    const [updated] = await getDatabase()
+      .update(tasks)
+      .set({
+        title: parsed.data.title,
+        estimatedMinutes: parsed.data.estimatedMinutes,
+        deadline,
+        scheduledStart,
+        scheduledEnd: scheduledStart
+          ? new Date(scheduledStart.getTime() + parsed.data.estimatedMinutes * 60_000)
+          : null,
+        updatedAt: new Date()
+      })
+      .where(and(eq(tasks.id, parsed.data.taskId), eq(tasks.userId, locals.user!.id)))
+      .returning({ id: tasks.id });
+    if (!updated) return fail(404, { action: 'edit', error: 'Task not found.' });
+    return { action: 'edit', success: true };
+  },
   create: async ({ request, locals }) => {
     const form = await request.formData();
     if (!intendedOwnerMatches(form, locals.user!.id)) {

@@ -24,6 +24,38 @@
   let { data, form } = $props();
   let uploadOpen = $state(false);
   let editOpen = $state(false);
+  let textOpen = $state(false);
+  let savedText = $state('');
+  let textError = $state('');
+  let textDocument = $state<{ id: string; title: string } | null>(null);
+  function readSavedText(document: {
+    id: string;
+    title: string;
+    extractedText: string | null;
+    correctedText: string | null;
+  }) {
+    textDocument = document;
+    savedText = document.correctedText ?? document.extractedText ?? '';
+    textError = '';
+    textOpen = true;
+  }
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(savedText);
+      localToast = 'Text copied.';
+      localToastToken += 1;
+    } catch {
+      textError = 'Copy was unavailable. Select the text and copy it manually.';
+    }
+  }
+  function downloadText() {
+    const url = URL.createObjectURL(new Blob([savedText], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'studysky-notes.txt';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   let deleteOpen = $state(false);
   let ocrOpen = $state(false);
   let selectedRow = $state<(typeof data.documents)[number] | null>(null);
@@ -246,6 +278,11 @@
               <button type="button" onclick={() => openEdit(row)}>
                 <Pencil size={15} /> Edit details
               </button>
+              {#if row.document.correctedText !== null || row.document.extractedText !== null}
+                <button type="button" onclick={() => readSavedText(row.document)}
+                  ><FileText size={15} /> Read / edit text</button
+                >
+              {/if}
               <button class="danger" type="button" onclick={() => openDelete(row)}>
                 <Trash2 size={15} /> Delete
               </button>
@@ -409,6 +446,47 @@
     {/if}
   </Modal>
 </div>
+
+<Modal
+  bind:open={textOpen}
+  title={textDocument ? `Text · ${textDocument.title}` : 'Saved text'}
+  size="large"
+>
+  {#if textDocument}
+    <form
+      method="POST"
+      action="?/correctText"
+      class="stack"
+      use:enhance={() =>
+        async ({ result, update }) => {
+          if (result.type === 'success') {
+            await update();
+            textOpen = false;
+          } else
+            textError =
+              result.type === 'failure'
+                ? String(result.data?.error ?? 'Could not save text.')
+                : 'Could not save text. Try again.';
+        }}
+    >
+      <input type="hidden" name="documentId" value={textDocument.id} />
+      <label class="field"
+        >Saved text and LaTeX<textarea
+          name="correctedText"
+          rows="18"
+          bind:value={savedText}
+          maxlength="2000000"
+        ></textarea></label
+      >
+      {#if textError}<p role="alert">{textError}</p>{/if}
+      <div class="form-actions">
+        <button class="button" type="button" onclick={copyText}>Copy</button>
+        <button class="button" type="button" onclick={downloadText}>Download text</button>
+        <button class="button button-primary">Save text</button>
+      </div>
+    </form>
+  {/if}
+</Modal>
 
 <style>
   .library-toolbar {

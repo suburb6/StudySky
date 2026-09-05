@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import {
     BookOpen,
     CheckSquare2,
@@ -26,7 +27,8 @@
   function hrefFor(group: string, row: Record<string, unknown>) {
     if (group === 'modules') return `/modules/${row.id}`;
     if (group === 'chapters') return `/chapters/${row.id}`;
-    if (group === 'tasks') return '/tasks';
+    if (group === 'tasks')
+      return `/tasks?task=${row.id}&search=${encodeURIComponent(page.url.searchParams.toString())}`;
     if (group === 'documents') return `/api/documents/${row.id}/original`;
     if (group === 'practice') return `/practice?question=${row.id}`;
     return '/revision';

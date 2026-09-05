@@ -1,8 +1,15 @@
 <script lang="ts">
   import { CalendarClock, Plus, RotateCcw } from '@lucide/svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { enhance } from '$app/forms';
+  import TaskEditor from '$lib/components/TaskEditor.svelte';
+  import Toast from '$lib/components/Toast.svelte';
+  import { dateKeyInTimeZone } from '$lib/domain/time';
 
   let { data } = $props();
+  let editOpen = $state(false);
+  let editingTask = $state<(typeof data.scheduled)[number]['task'] | null>(null);
+  let error = $state('');
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const todayDay = $derived(new Date(`${data.date}T00:00:00Z`).getUTCDay());
   const todayEntries = $derived(
@@ -27,6 +34,60 @@
     {/snippet}
   </PageHeader>
 
+  <Toast message={error} tone="error" token={error} />
+  <section class="surface panel stack" aria-labelledby="today-work">
+    <div class="row-between">
+      <h2 id="today-work">Your next tasks</h2>
+      <a class="subtle" href="/tasks">All tasks</a>
+    </div>
+    {#if data.scheduled.length}
+      {#each data.scheduled.slice(0, 8) as row}
+        <div class="row-between">
+          <button
+            class="task-link"
+            onclick={() => {
+              editingTask = row.task;
+              editOpen = true;
+            }}
+          >
+            <strong>{row.task.title}</strong>
+            <small
+              >{row.moduleCode ?? 'General'} · {row.task.estimatedMinutes} min
+              {#if row.task.deadline}
+                · {dateKeyInTimeZone(new Date(row.task.deadline), data.user.timezone) < data.date
+                  ? 'Overdue'
+                  : dateKeyInTimeZone(new Date(row.task.deadline), data.user.timezone) === data.date
+                    ? 'Due today'
+                    : `Due ${dateKeyInTimeZone(new Date(row.task.deadline), data.user.timezone)}`}{/if}
+            </small>
+          </button>
+          <form
+            method="POST"
+            action="/tasks?/status"
+            use:enhance={() =>
+              async ({ result, update }) => {
+                if (result.type === 'success') {
+                  error = '';
+                  await update();
+                } else
+                  error =
+                    result.type === 'failure'
+                      ? String(result.data?.error ?? 'Could not complete task.')
+                      : 'Could not complete task.';
+              }}
+          >
+            <input type="hidden" name="taskId" value={row.task.id} />
+            <input type="hidden" name="status" value="done" />
+            <button class="button button-sm" aria-label={`Complete ${row.task.title}`}>Done</button>
+          </form>
+        </div>
+      {/each}
+      {#if data.scheduled.length > 8}<a class="subtle" href="/tasks"
+          >View all {data.scheduled.length} tasks needing attention</a
+        >{/if}
+    {:else}<p class="muted">No overdue work or tasks planned for today.</p>{/if}
+  </section>
+  <TaskEditor bind:open={editOpen} task={editingTask} timezone={data.user.timezone} />
   <div class="today-grid">
     <section class="today-card" aria-labelledby="today-timetable">
       <div class="card-heading">
@@ -98,7 +159,23 @@
 </div>
 
 <style>
+  .task-link {
+    display: grid;
+    gap: 3px;
+    padding: 4px 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+  }
+  .task-link:hover strong {
+    text-decoration: underline;
+  }
+  .task-link small {
+    color: var(--text-soft);
+  }
   .today-grid {
+    margin-top: 18px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px;
