@@ -14,6 +14,13 @@ All notable changes are documented here. StudySky follows Semantic Versioning.
 
 - Clarified the privacy-first public-release wording and the administrator-approved OCR provider
   boundary in the README and architecture guide.
+- Updated compatible runtime and development dependencies, including ESLint 10 with matching plugins.
+- Updated pinned release actions and kept CodeQL init/analyze versions aligned; future CodeQL
+  updates are grouped to avoid incompatible split pull requests.
+
+### Security
+
+- Updated the transitive Nano ID dependency to a patched version.
 
 ## [0.2.0] - 2026-08-10
 
