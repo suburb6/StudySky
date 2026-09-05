@@ -221,10 +221,13 @@ test('uploads a scanned image and never reports a false client success', async (
   await page.locator('#upload-files').setInputFiles({
     name: `scan-${Date.now()}.png`,
     mimeType: 'image/png',
-    buffer: Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGUlEQVQokWP49esHSYhhVMOv0VD6NVyTBgCoJ+wfoEF/sQAAAABJRU5ErkJggg==',
-      'base64'
+    buffer: await sharp(
+      Buffer.from(
+        `<svg width="400" height="80"><rect width="400" height="80" fill="white"/><text x="10" y="40" font-size="24">Synthetic scan ${Date.now()}</text></svg>`
+      )
     )
+      .png()
+      .toBuffer()
   });
   await expect(page.getByText(/scan-/).first()).toBeVisible();
   await page.getByRole('button', { name: /^Upload/ }).click();
@@ -236,6 +239,7 @@ test('uploads a scanned image and never reports a false client success', async (
   const documentId = originalUrl!.split('/')[3];
   // Persist a synthetic recognition result; this tests editing, not model accuracy.
   const saved = await page.request.post('/documents?/saveLocalOcr', {
+    headers: { origin: new URL(page.url()).origin },
     form: {
       documentId,
       extractedText: 'Synthetic notes: \\[x^2\\]',
@@ -243,7 +247,7 @@ test('uploads a scanned image and never reports a false client success', async (
       outputKind: 'formula_latex'
     }
   });
-  expect(saved.ok()).toBe(true);
+  expect(saved.ok(), await saved.text()).toBe(true);
   await page.reload();
   await documentRow.getByLabel(/^Actions for/).click();
   await documentRow.getByRole('button', { name: 'Read / edit text' }).click();
