@@ -64,7 +64,7 @@
     "sharp": "0.35.4",
     "svelte": "5.56.10",
     "web-push": "3.6.7",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
